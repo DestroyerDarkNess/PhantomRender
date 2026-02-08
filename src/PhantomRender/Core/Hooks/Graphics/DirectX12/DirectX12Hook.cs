@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using PhantomRender.Core.Native;
+using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Graphics
 {
@@ -34,7 +35,10 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         public static IntPtr GetSwapChainAddress()
         {
-            using (var window = new System.Windows.Forms.Form())
+            IntPtr hWnd = NativeWindowHelper.CreateDummyWindow(); // Use Native Helper
+            if (hWnd == IntPtr.Zero) return IntPtr.Zero;
+
+            try
             {
                 IntPtr device;
                 // 1. Create Device
@@ -135,7 +139,7 @@ namespace PhantomRender.Core.Hooks.Graphics
                         Width = 100, Height = 100, Format = Native.DXGI.DXGI_FORMAT_R8G8B8A8_UNORM, RefreshRate = new Native.DXGI.DXGI_RATIONAL{ Numerator=60, Denominator=1 }
                     },
                     BufferUsage = Native.DXGI.DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                    OutputWindow = window.Handle,
+                    OutputWindow = hWnd,
                     SampleDesc = new Native.DXGI.DXGI_SAMPLE_DESC { Count=1, Quality=0 },
                     SwapEffect = Direct3D12.DXGI_SWAP_EFFECT_FLIP_DISCARD,
                     Windowed = 1,
@@ -170,6 +174,19 @@ namespace PhantomRender.Core.Hooks.Graphics
                 Marshal.Release(device);
 
                 return swapChain;
+            }
+            finally
+            {
+                // We should keep the window alive?
+                // For VTable scanning, usually we create -> verify -> destroy.
+                // But if swapchain needs window, destroying it might invalidate swapchain VTable?
+                // Probably not the VTable (code), but the object.
+                // But VTableHook reads pointer instantly.
+                // We return SwapChain POINTER. The caller must read VTable.
+                // If we destroy window, SwapChain might get destroyed/invalid?
+                // Kiero destroys window immediately.
+                // So let's destroy it.
+                NativeWindowHelper.DestroyDummyWindow(hWnd);
             }
         }
 

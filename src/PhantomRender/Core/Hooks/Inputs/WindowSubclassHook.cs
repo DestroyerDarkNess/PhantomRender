@@ -9,7 +9,7 @@ namespace PhantomRender.Core.Hooks.Inputs
         private readonly IntPtr _hWnd;
         private readonly SUBCLASSPROC _subclassProc;
         private bool _isEnabled;
-        private const int _uIdSubclass = 1337; // Unique ID for our subclass
+        private readonly IntPtr _uIdSubclass = (IntPtr)1337; // Unique ID for our subclass
 
         public delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         public event WndProcDelegate OnWndProc;

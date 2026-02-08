@@ -70,7 +70,7 @@ namespace PhantomRender.Core.Native
         [DllImport("dxgi.dll")]
         public static extern int CreateDXGIFactory(ref Guid riid, out IntPtr ppFactory);
 
-        public static readonly Guid IID_IDXGIFactory4 = new Guid("1bc6ea02-ef36-464f-bf0c-21ca39e5168a");
+        public static Guid IID_IDXGIFactory4 = new Guid("1bc6ea02-ef36-464f-bf0c-21ca39e5168a");
 
         [ComImport]
         [Guid("1bc6ea02-ef36-464f-bf0c-21ca39e5168a")]

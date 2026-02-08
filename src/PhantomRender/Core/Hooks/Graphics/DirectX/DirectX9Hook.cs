@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using PhantomRender.Core.Native;
+using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Graphics
 {
@@ -27,24 +28,24 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         public static IntPtr GetDeviceAddress()
         {
-            using (var window = new System.Windows.Forms.Form()) // Temporary hidden window
+            IntPtr hWnd = NativeWindowHelper.CreateDummyWindow();
+            if (hWnd == IntPtr.Zero) return IntPtr.Zero;
+
+            try
             {
                 var d3d = Direct3D9.Direct3DCreate9(Direct3D9.D3D_SDK_VERSION);
-                bool isEx = false;
-                
                 if (d3d == IntPtr.Zero)
                 {
                     // Try Ex
                      if (Direct3D9.Direct3DCreate9Ex(Direct3D9.D3D_SDK_VERSION, out d3d) < 0)
                         return IntPtr.Zero;
-                     isEx = true;
                 }
 
                 var presentParams = new Direct3D9.D3DPRESENT_PARAMETERS
                 {
                     Windowed = 1,
                     SwapEffect = 1, // D3DSWAPEFFECT_DISCARD
-                    hDeviceWindow = window.Handle,
+                    hDeviceWindow = hWnd,
                     BackBufferCount = 1,
                     BackBufferWidth = 4,
                     BackBufferHeight = 4,
@@ -64,7 +65,7 @@ namespace PhantomRender.Core.Hooks.Graphics
                 IntPtr createDevicePtr = MemoryUtils.ReadIntPtr(vTable + 16 * IntPtr.Size);
                 
                 var createDevice = Marshal.GetDelegateForFunctionPointer<CreateDeviceDelegate>(createDevicePtr);
-                int result = createDevice(d3d, 0, Direct3D9.D3DDEVTYPE_HAL, window.Handle, Direct3D9.D3DCREATE_SOFTWARE_VERTEXPROCESSING, ref presentParams, out device);
+                int result = createDevice(d3d, 0, Direct3D9.D3DDEVTYPE_HAL, hWnd, Direct3D9.D3DCREATE_SOFTWARE_VERTEXPROCESSING, ref presentParams, out device);
                 
                 if (result < 0) // Failed
                 {
@@ -87,6 +88,10 @@ namespace PhantomRender.Core.Hooks.Graphics
                 // Ideally, the caller should manage lifecycle.
                 // For this helper, we'll return the device and let the caller release it using ReleaseDelegate (index 2).
                 return device;
+            }
+            finally
+            {
+                NativeWindowHelper.DestroyDummyWindow(hWnd);
             }
         }
     }

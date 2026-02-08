@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using PhantomRender.Core.Native;
+using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Inputs
 {

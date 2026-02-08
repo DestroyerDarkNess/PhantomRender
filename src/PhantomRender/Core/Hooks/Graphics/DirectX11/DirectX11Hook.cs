@@ -17,7 +17,10 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         public static IntPtr GetSwapChainAddress()
         {
-            using (var window = new System.Windows.Forms.Form())
+            IntPtr hWnd = NativeWindowHelper.CreateDummyWindow();
+            if (hWnd == IntPtr.Zero) return IntPtr.Zero;
+
+            try
             {
                 var desc = new DXGI.DXGI_SWAP_CHAIN_DESC
                 {
@@ -32,7 +35,7 @@ namespace PhantomRender.Core.Hooks.Graphics
                         RefreshRate = new DXGI.DXGI_RATIONAL { Numerator = 60, Denominator = 1 }
                     },
                     BufferUsage = DXGI.DXGI_USAGE_RENDER_TARGET_OUTPUT,
-                    OutputWindow = window.Handle,
+                    OutputWindow = hWnd,
                     SampleDesc = new DXGI.DXGI_SAMPLE_DESC { Count = 1, Quality = 0 },
                     SwapEffect = 0, // DXGI_SWAP_EFFECT_DISCARD
                     Windowed = 1,
@@ -105,6 +108,10 @@ namespace PhantomRender.Core.Hooks.Graphics
                 }
 
                 return IntPtr.Zero;
+            }
+            finally
+            {
+                NativeWindowHelper.DestroyDummyWindow(hWnd);
             }
         }
     }
