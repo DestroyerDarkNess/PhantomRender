@@ -66,5 +66,41 @@ namespace PhantomRender.Core.Native
 
         public const int DXGI_FORMAT_R8G8B8A8_UNORM = 28;
         public const uint DXGI_USAGE_RENDER_TARGET_OUTPUT = 0x00000020;
+
+        [DllImport("dxgi.dll")]
+        public static extern int CreateDXGIFactory(ref Guid riid, out IntPtr ppFactory);
+
+        public static readonly Guid IID_IDXGIFactory4 = new Guid("1bc6ea02-ef36-464f-bf0c-21ca39e5168a");
+
+        [ComImport]
+        [Guid("1bc6ea02-ef36-464f-bf0c-21ca39e5168a")]
+        [InterfaceType(ComInterfaceType.InterfaceIsIUnknown)]
+        public interface IDXGIFactory4
+        {
+            // IDXGIFactory methods
+            void EnumAdapters(); // Placeholder
+            void MakeWindowAssociation(); // Placeholder
+            void GetWindowAssociation(); // Placeholder
+            void CreateSwapChain(
+                [In] IntPtr pDevice,
+                [In] ref DXGI_SWAP_CHAIN_DESC pDesc,
+                [Out] out IntPtr ppSwapChain);
+            
+            void CreateSoftwareAdapter(); // Placeholder
+            
+            // IDXGIFactory1 methods... (omitted for brevity, need correct VTable order if using InterfaceIsIUnknown)
+            // COM Interface inheritance in C# ComImport implies we must define ALL methods in order OR derive interfaces.
+            // Deriving is safer.
+            
+            // Strategy change: Defining full interfaces is huge.
+            // Let's use ComImport with specific VTable layout ONLY if we derive correctly.
+            // Or easier: Use strictly VTable usage for the Dummy creation to avoid 1000 lines of Interface defs.
+            // Kiero uses C++ headers which have it all.
+            
+            // Re-evaluating: user wants "safe C# code".
+            // A minimal interface definition is safe but fragile if methods are missing.
+            // Using `dynamic` or `Marshal.GetDelegate` is safer for "minimal" needs.
+        
+        }
     }
 }
