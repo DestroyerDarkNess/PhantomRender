@@ -5,6 +5,7 @@
     <PublishAot>true</PublishAot>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
+    <Platforms>x64;x86</Platforms>
     <OutputType>Library</OutputType> <!-- Or Exe depending on loader, but Library for strict DLL export -->
   </PropertyGroup>
 
