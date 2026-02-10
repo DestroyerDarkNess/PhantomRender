@@ -1,7 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
-using System.Threading;
+using System.IO;
 using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Native
@@ -10,35 +10,112 @@ namespace PhantomRender.ImGui.Native
     {
         private const uint DLL_PROCESS_DETACH = 0;
         private const uint DLL_PROCESS_ATTACH = 1;
+        
+        private static IntPtr _hModule;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
-        public static int DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
+        public static unsafe bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
         {
             switch (ul_reason_for_call)
             {
                 case DLL_PROCESS_ATTACH:
-                    // Create a new thread to avoid Loader Lock deadlocks when initializing things like Dummy Windows or Hooks
-                    var thread = new Thread(InitializeThread);
-                    thread.SetApartmentState(ApartmentState.STA); // Graphics frameworks often like STA
-                    thread.Start();
+                    _hModule = hModule;
+                    // Use CreateThread (Native) instead of new Thread() (Managed) to avoid Loader Lock
+                    // Pass wrapper function address
+                    IntPtr handle = CreateThread(IntPtr.Zero, IntPtr.Zero, &InitializeThreadWrapper, IntPtr.Zero, 0, IntPtr.Zero);
+                    if (handle != IntPtr.Zero)
+                    {
+                        CloseHandle(handle);
+                    }
                     break;
                 case DLL_PROCESS_DETACH:
-                    // Cleanup if needed
                     break;
             }
-            return 1; // TRUE
+            return true;
         }
 
-        private static void InitializeThread()
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
+        private static uint InitializeThreadWrapper(IntPtr lpParam)
+        {
+            Initialize();
+            return 0;
+        }
+
+        private static void Initialize()
         {
             try
             {
+                AllocConsole();
+                
+                Console.WriteLine("[PhantomRender] Console Allocated!");
+                
+                // Pre-load native dependencies from the same directory as this DLL
+                LoadNativeDependencies();
+
+                Console.WriteLine("[PhantomRender] Initializing OverlayManager...");
+                
                 OverlayManager.Initialize();
+                
+                Console.WriteLine("[PhantomRender] OverlayManager Initialized.");
             }
-            catch
+            catch (Exception ex)
             {
-                // Swallow
+                Console.WriteLine($"[PhantomRender] Initialization Error: {ex}");
             }
         }
+        
+        private static unsafe void LoadNativeDependencies()
+        {
+            try
+            {
+                char* buffer = stackalloc char[260]; // MAX_PATH
+                uint len = GetModuleFileName(_hModule, buffer, 260);
+                if (len > 0)
+                {
+                    string dllPath = new string(buffer, 0, (int)len);
+                    string directory = Path.GetDirectoryName(dllPath);
+                    
+                    // Load cimgui.dll (core ImGui native library)
+                    LoadDllFromDirectory(directory, "cimgui.dll");
+                    
+                    // Load ImGuiImpl.dll (ImGui backends: Win32, OpenGL3, DX9, etc.)
+                    LoadDllFromDirectory(directory, "ImGuiImpl.dll");
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] Failed to load native dependencies: {ex}");
+            }
+        }
+        
+        private static void LoadDllFromDirectory(string directory, string dllName)
+        {
+            string fullPath = Path.Combine(directory, dllName);
+            Console.WriteLine($"[PhantomRender] Loading {dllName} from: {fullPath}");
+            
+            if (File.Exists(fullPath))
+            {
+                IntPtr loaded = NativeLibrary.Load(fullPath);
+                Console.WriteLine($"[PhantomRender] {dllName} loaded: {loaded}");
+            }
+            else
+            {
+                Console.WriteLine($"[PhantomRender] {dllName} not found at expected path!");
+            }
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool AllocConsole();
+
+        [DllImport("kernel32.dll")]
+        private static extern unsafe IntPtr CreateThread(IntPtr lpThreadAttributes, IntPtr dwStackSize, delegate* unmanaged[Stdcall]<IntPtr, uint> lpStartAddress, IntPtr lpParameter, uint dwCreationFlags, IntPtr lpThreadId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        private static extern unsafe uint GetModuleFileName(IntPtr hModule, char* lpFilename, uint nSize);
     }
 }

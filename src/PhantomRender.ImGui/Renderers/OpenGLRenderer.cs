@@ -7,34 +7,48 @@ namespace PhantomRender.ImGui.Renderers
 {
     public sealed class OpenGLRenderer : RendererBase
     {
-        private string _glslVersion = "#version 130";
-
-        public void SetGLSLVersion(string version)
-        {
-            _glslVersion = version;
-        }
+        private bool _frameStarted = false;
 
         public override bool Initialize(IntPtr device, IntPtr windowHandle)
         {
-            // Device is ignored for OpenGL (context is thread-local)
             if (IsInitialized) return true;
 
             try
             {
+                Console.WriteLine($"[PhantomRender] Initalizing ImGui for Window: {windowHandle}");
+                Console.Out.Flush();
                 InitializeImGui(windowHandle);
 
-                // Initialize OpenGL3 Backend
-                if (!ImGuiImplOpenGL3.Init(_glslVersion))
+                // Detect the GL version and appropriate GLSL version
+                string glslVersion = DetectGLSLVersion();
+                if (glslVersion == null)
                 {
+                    Console.WriteLine("[PhantomRender] OpenGL version too old (< 2.0), cannot use ImGui OpenGL3 backend!");
+                    ShutdownImGui();
+                    return false;
+                }
+
+                // Initialize OpenGL3 Backend (with SetCurrentContext like the working project)
+                Console.WriteLine($"[PhantomRender] ImGuiImplOpenGL3.SetCurrentContext...");
+                Console.Out.Flush();
+                ImGuiImplOpenGL3.SetCurrentContext(Context);
+
+                Console.WriteLine($"[PhantomRender] Initializing OpenGL3 Backend with version: {glslVersion}");
+                Console.Out.Flush();
+                if (!ImGuiImplOpenGL3.Init(glslVersion))
+                {
+                    Console.WriteLine("[PhantomRender] ImGuiImplOpenGL3.Init returned false!");
                     ShutdownImGui();
                     return false;
                 }
 
                 IsInitialized = true;
+                Console.WriteLine("[PhantomRender] OpenGLRenderer Initialized Successfully!");
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
+                Console.WriteLine($"[PhantomRender] OpenGLRenderer Initialization Error: {ex}");
                 return false;
             }
         }
@@ -42,30 +56,32 @@ namespace PhantomRender.ImGui.Renderers
         public override void NewFrame()
         {
             if (!IsInitialized) return;
+            if (_frameStarted) return;
 
             ImGuiImplOpenGL3.NewFrame();
             ImGuiImplWin32.NewFrame();
             Hexa.NET.ImGui.ImGui.NewFrame();
+
+            _frameStarted = true;
         }
 
         public override void Render()
         {
             if (!IsInitialized) return;
+            if (!_frameStarted) return;
+
+            // Demo window for testing
+            Hexa.NET.ImGui.ImGui.ShowDemoWindow();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();
             ImGuiImplOpenGL3.RenderDrawData(Hexa.NET.ImGui.ImGui.GetDrawData());
+
+            _frameStarted = false;
         }
 
-        public override void OnLostDevice()
-        {
-            // Not applicable for OpenGL usually, but keeping consistent
-        }
-
-        public override void OnResetDevice()
-        {
-            // Not applicable
-        }
+        public override void OnLostDevice() { }
+        public override void OnResetDevice() { }
 
         public override void Dispose()
         {

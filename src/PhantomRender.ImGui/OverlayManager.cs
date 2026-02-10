@@ -14,14 +14,15 @@ namespace PhantomRender.ImGui
 
         private static OpenGLHook _glHook;
         private static OpenGLRenderer _glRenderer;
+        private static bool _glInitFailed;
 
         public static void Initialize()
         {
             try { InitializeDX9(); }
-            catch (Exception ex) { Debug.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
+            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
 
             try { InitializeOpenGL(); }
-            catch (Exception ex) { Debug.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
+            catch (Exception ex) { Console.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
         }
 
         private static void InitializeDX9()
@@ -36,7 +37,9 @@ namespace PhantomRender.ImGui
                 {
                     if (!_dx9Renderer.IsInitialized)
                     {
+                         Console.WriteLine("[PhantomRender] DX9 OnEndScene - Initializing Renderer...");
                          IntPtr hWnd = GetWindowHandleFailSafe();
+                         Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
                          _dx9Renderer.Initialize(device, hWnd);
                     }
 
@@ -48,25 +51,33 @@ namespace PhantomRender.ImGui
                 };
 
                 _dx9Hook.Enable();
-                Debug.WriteLine("[PhantomRender] DX9 Hook Enabled.");
+                Console.WriteLine("[PhantomRender] DX9 Hook Enabled.");
+            }
+            else
+            {
+                 Console.WriteLine("[PhantomRender] DX9 Device Not Found (Dummy creation failed).");
             }
         }
 
         private static void InitializeOpenGL()
         {
-            string targetModule = Process.GetCurrentProcess().MainModule.ModuleName;
-            
-            _glHook = new OpenGLHook(targetModule);
+            _glHook = new OpenGLHook();
             _glRenderer = new OpenGLRenderer();
 
             _glHook.OnSwapBuffers += (hdc) =>
             {
-                 if (!_glRenderer.IsInitialized)
+                 if (!_glRenderer.IsInitialized && !_glInitFailed)
                  {
+                     Console.WriteLine("[PhantomRender] OpenGL OnSwapBuffers - Initializing Renderer...");
                      IntPtr hWnd = WindowFromDC(hdc);
                      if (hWnd == IntPtr.Zero) hWnd = GetWindowHandleFailSafe();
+                     Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
                      
-                     _glRenderer.Initialize(IntPtr.Zero, hWnd);
+                     if (!_glRenderer.Initialize(IntPtr.Zero, hWnd))
+                     {
+                         Console.WriteLine("[PhantomRender] OpenGL Renderer init failed, will not retry.");
+                         _glInitFailed = true;
+                     }
                  }
 
                  if (_glRenderer.IsInitialized)
@@ -77,7 +88,7 @@ namespace PhantomRender.ImGui
             };
             
             _glHook.Enable();
-             Debug.WriteLine("[PhantomRender] OpenGL Hook Enabled.");
+             Console.WriteLine("[PhantomRender] OpenGL Hook Enabled.");
         }
 
         [DllImport("user32.dll")]

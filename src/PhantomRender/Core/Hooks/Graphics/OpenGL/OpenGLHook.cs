@@ -4,7 +4,7 @@ using PhantomRender.Core.Hooks;
 
 namespace PhantomRender.Core.Hooks.Graphics.OpenGL
 {
-    public class OpenGLHook : IATHook
+    public class OpenGLHook : SimpleInlineHook
     {
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int wglSwapBuffersDelegate(IntPtr hdc);
@@ -12,11 +12,11 @@ namespace PhantomRender.Core.Hooks.Graphics.OpenGL
         private wglSwapBuffersDelegate _hookDelegate;
         public event Action<IntPtr> OnSwapBuffers;
 
-        public OpenGLHook(string targetModule) 
-            : base(targetModule, "opengl32.dll", "wglSwapBuffers", IntPtr.Zero)
+        public OpenGLHook() 
+            : base("opengl32.dll", "wglSwapBuffers")
         {
             _hookDelegate = new wglSwapBuffersDelegate(wglSwapBuffersHook);
-            _newFunctionAddress = Marshal.GetFunctionPointerForDelegate(_hookDelegate);
+            SetHook(Marshal.GetFunctionPointerForDelegate(_hookDelegate));
         }
 
         private int wglSwapBuffersHook(IntPtr hdc)
@@ -28,7 +28,7 @@ namespace PhantomRender.Core.Hooks.Graphics.OpenGL
                 var original = Marshal.GetDelegateForFunctionPointer<wglSwapBuffersDelegate>(OriginalFunction);
                 return original(hdc);
             }
-            return 1; // TRUE
+            return 1; // TRUE (Fail safe, though OriginalFunction should exist if Enabled)
         }
     }
 }

@@ -77,7 +77,7 @@ namespace PhantomRender.Core.Native
         private delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Auto, SetLastError = true)]
-        private static extern IntPtr GetModuleHandle(string lpModuleName);
+        public static extern IntPtr GetModuleHandle(string lpModuleName);
 
         [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Ansi)]
         private static extern ushort RegisterClassEx(ref WNDCLASSEX lpwcx);
