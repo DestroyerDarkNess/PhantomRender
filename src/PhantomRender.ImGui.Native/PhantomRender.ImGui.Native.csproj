@@ -1,0 +1,15 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework> <!-- Must be single target for Native AOT -->
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <OutputType>Library</OutputType> <!-- Or Exe depending on loader, but Library for strict DLL export -->
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
+  </ItemGroup>
+
+</Project>

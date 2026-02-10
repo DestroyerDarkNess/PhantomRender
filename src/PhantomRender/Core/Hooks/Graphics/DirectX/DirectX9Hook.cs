@@ -11,9 +11,27 @@ namespace PhantomRender.Core.Hooks.Graphics
         private const int VTABLE_Present = 17;
         private const int VTABLE_EndScene = 42;
 
+        public delegate int EndSceneDelegate(IntPtr device);
+        public event Action<IntPtr> OnEndScene;
+        private EndSceneDelegate _hookDelegate;
+
         public DirectX9Hook(IntPtr deviceAddress) 
-            : base(deviceAddress, VTABLE_EndScene, IntPtr.Zero) // Pending delegate
+            : base(deviceAddress, VTABLE_EndScene, IntPtr.Zero)
         {
+            _hookDelegate = new EndSceneDelegate(EndSceneHook);
+            NewFunctionAddress = Marshal.GetFunctionPointerForDelegate(_hookDelegate);
+        }
+
+        private int EndSceneHook(IntPtr device)
+        {
+            OnEndScene?.Invoke(device);
+            
+            if (OriginalFunction != IntPtr.Zero)
+            {
+                var original = Marshal.GetDelegateForFunctionPointer<EndSceneDelegate>(OriginalFunction);
+                return original(device);
+            }
+            return 0; // D3D_OK
         }
         
         // This method creates a dummy device to get the VTable address

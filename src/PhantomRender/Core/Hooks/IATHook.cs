@@ -14,7 +14,7 @@ namespace PhantomRender.Core.Hooks
         private string _targetModule;
         private string _importedModule;
         private string _functionName;
-        private IntPtr _newFunctionAddress;
+        protected IntPtr _newFunctionAddress;
         private IntPtr _originalFunctionAddress;
         private IntPtr _iatEntryAddress;
         private bool _isEnabled;
