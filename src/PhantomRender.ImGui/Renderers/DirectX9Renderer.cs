@@ -13,22 +13,37 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
+                Console.WriteLine($"[PhantomRender] DirectX9Renderer: Entering Initialize (RE-PUBLISHED V2). Device: {device}, Window: {windowHandle}");
+                Console.Out.Flush();
+
                 InitializeImGui(windowHandle);
+                
+                // Synchronize context
+                Console.WriteLine("[PhantomRender] DirectX9Renderer: Setting context for D3D9 backend...");
+                Console.Out.Flush();
+                ImGuiImplD3D9.SetCurrentContext(Context);
 
                 // Initialize D3D9 Backend
-                // Type cast to correct pointer type
+                Console.WriteLine("[PhantomRender] DirectX9Renderer: Calling ImGuiImplD3D9.Init...");
+                Console.Out.Flush();
+                
                 if (!ImGuiImplD3D9.Init((IDirect3DDevice9*)device))
                 {
+                    Console.WriteLine("[PhantomRender] DirectX9Renderer: ImGuiImplD3D9.Init returned FALSE!");
+                    Console.Out.Flush();
                     ShutdownImGui();
                     return false;
                 }
 
                 IsInitialized = true;
+                Console.WriteLine("[PhantomRender] DirectX9Renderer: Initialized Successfully! (V2)");
+                Console.Out.Flush();
                 return true;
             }
-            catch
+            catch (Exception ex)
             {
-                // Log?
+                Console.WriteLine($"[PhantomRender] DirectX9Renderer: Init Error (V2): {ex}");
+                Console.Out.Flush();
                 return false;
             }
         }
@@ -37,14 +52,43 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (!IsInitialized) return;
 
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+            ImGuiImplD3D9.SetCurrentContext(Context);
+            ImGuiImplWin32.SetCurrentContext(Context);
+
             ImGuiImplD3D9.NewFrame();
             ImGuiImplWin32.NewFrame();
+            _inputEmulator?.Update();
             Hexa.NET.ImGui.ImGui.NewFrame();
         }
+
+        private int _frameCounter = 0;
 
         public override void Render()
         {
             if (!IsInitialized) return;
+
+            _frameCounter++;
+            if (_frameCounter % 100 == 0)
+            {
+                Console.WriteLine($"[PhantomRender] DirectX9Renderer: Render Loop Active. Frame: {_frameCounter}. Display: {IO.DisplaySize.X}x{IO.DisplaySize.Y}");
+                Console.Out.Flush();
+            }
+
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+
+            // Test window at fixed position
+            Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.FirstUseEver);
+            if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX9"))
+            {
+                Hexa.NET.ImGui.ImGui.Text("Status: Active");
+                Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
+                Hexa.NET.ImGui.ImGui.Text($"Frames: {_frameCounter}");
+                Hexa.NET.ImGui.ImGui.End();
+            }
+
+            // Demo window for testing
+            Hexa.NET.ImGui.ImGui.ShowDemoWindow();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

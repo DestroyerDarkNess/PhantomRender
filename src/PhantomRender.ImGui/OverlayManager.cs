@@ -25,6 +25,8 @@ namespace PhantomRender.ImGui
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
         }
 
+        private static object _dx9Lock = new object();
+
         private static void InitializeDX9()
         {
             var deviceAddr = DirectX9Hook.GetDeviceAddress();
@@ -37,10 +39,16 @@ namespace PhantomRender.ImGui
                 {
                     if (!_dx9Renderer.IsInitialized)
                     {
-                         Console.WriteLine("[PhantomRender] DX9 OnEndScene - Initializing Renderer...");
-                         IntPtr hWnd = GetWindowHandleFailSafe();
-                         Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
-                         _dx9Renderer.Initialize(device, hWnd);
+                        lock (_dx9Lock)
+                        {
+                            if (!_dx9Renderer.IsInitialized)
+                            {
+                                Console.WriteLine("[PhantomRender] DX9 OnEndScene - Initializing Renderer... (Lock Acquired)");
+                                IntPtr hWnd = GetWindowHandleFailSafe();
+                                Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
+                                _dx9Renderer.Initialize(device, hWnd);
+                            }
+                        }
                     }
 
                     if (_dx9Renderer.IsInitialized)
