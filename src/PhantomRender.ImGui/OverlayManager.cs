@@ -16,10 +16,16 @@ namespace PhantomRender.ImGui
         private static OpenGLRenderer _glRenderer;
         private static bool _glInitFailed;
 
+        private static DirectX10Hook _dx10Hook;
+        private static DirectX10Renderer _dx10Renderer;
+
         public static void Initialize()
         {
             try { InitializeDX9(); }
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
+
+            try { InitializeDX10(); }
+            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX10 Init Failed: {ex}"); }
 
             try { InitializeOpenGL(); }
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
@@ -88,6 +94,55 @@ namespace PhantomRender.ImGui
             else
             {
                  Console.WriteLine("[PhantomRender] DX9 Device Not Found (Dummy creation failed).");
+            }
+        }
+
+        private static object _dx10Lock = new object();
+
+        private static void InitializeDX10()
+        {
+            var swapChainAddr = DirectX10Hook.GetSwapChainAddress();
+            if (swapChainAddr != IntPtr.Zero)
+            {
+                _dx10Hook = new DirectX10Hook(swapChainAddr);
+                _dx10Renderer = new DirectX10Renderer();
+
+                _dx10Hook.OnPresent += (swapChain, syncInterval, flags) =>
+                {
+                    if (!_dx10Renderer.IsInitialized)
+                    {
+                        lock (_dx10Lock)
+                        {
+                            if (!_dx10Renderer.IsInitialized)
+                            {
+                                Console.WriteLine("[PhantomRender] DX10 OnPresent - Initializing Renderer...");
+                                IntPtr hWnd = GetWindowHandleFailSafe();
+                                
+                                IntPtr device = _dx10Hook.GetDevice(swapChain);
+                                if (device != IntPtr.Zero)
+                                {
+                                    Console.WriteLine($"[PhantomRender] DX10 Device found: {device}. Target Window: {hWnd}");
+                                    _dx10Renderer.Initialize(device, hWnd);
+                                    // Release the extra ref from GetDevice
+                                    Marshal.Release(device);
+                                }
+                                else
+                                {
+                                    Console.WriteLine("[PhantomRender] DX10 Device NOT found in SwapChain!");
+                                }
+                            }
+                        }
+                    }
+
+                    if (_dx10Renderer.IsInitialized)
+                    {
+                        _dx10Renderer.NewFrame();
+                        _dx10Renderer.Render();
+                    }
+                };
+                
+                _dx10Hook.Enable();
+                Console.WriteLine("[PhantomRender] DX10 Hook Enabled.");
             }
         }
 

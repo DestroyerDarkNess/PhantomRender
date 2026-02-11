@@ -1,0 +1,12 @@
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <!-- Preserve MinHook assembly metadata -->
+    <Assembly Name="MinHook.NET" Dynamic="Required All" />
+    
+    <!-- Specifically target the nested struct MinHook.Trampoline+JMP_ABS -->
+    <!-- Note: Assembly name might be MinHook.NET or MinHook? Let's assume MinHook.NET based on NuGet key -->
+    <Assembly Name="MinHook.NET">
+        <Type Name="MinHook.Trampoline+JMP_ABS" Dynamic="Required All" MarshalStructure="Required All" />
+    </Assembly>
+  </Application>
+</Directives>

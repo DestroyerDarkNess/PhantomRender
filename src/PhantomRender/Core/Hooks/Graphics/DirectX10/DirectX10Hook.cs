@@ -9,6 +9,7 @@ namespace PhantomRender.Core.Hooks.Graphics
     public class DirectX10Hook : IDisposable
     {
         // IDXGISwapChain VTable indices
+        private const int VTABLE_GetDevice = 7;
         private const int VTABLE_Present = 8;
         
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -59,6 +60,31 @@ namespace PhantomRender.Core.Hooks.Graphics
             _hookEngine?.Dispose();
             GC.SuppressFinalize(this);
         }
+
+        public unsafe IntPtr GetDevice(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain);
+            IntPtr getDeviceAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_GetDevice * IntPtr.Size);
+
+            // HRESULT GetDevice(REFIID riid, void **ppDevice)
+            var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
+
+            Guid iid = new Guid("9B7E4E00-342C-4106-A19F-4F2704F689F0"); // IID_ID3D10Device
+            IntPtr device;
+            if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
+            {
+                // Note: GetDevice adds a ref, we should probably release it after use if we don't store it.
+                // But for ImGui, we'll pass it to the renderer.
+                return device;
+            }
+
+            return IntPtr.Zero;
+        }
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetDeviceDelegate(IntPtr swapChain, ref Guid riid, out IntPtr ppDevice);
 
         public static IntPtr GetSwapChainAddress()
         {

@@ -13,4 +13,9 @@
     <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <RdXmlFile Include="rd.xml" />
+    <PackageReference Include="MinHook.NET" Version="1.1.2" /> <!-- Ensure explicit ref here too for trimming/rd -->
+  </ItemGroup>
+
 </Project>
