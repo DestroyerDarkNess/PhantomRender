@@ -27,6 +27,9 @@ namespace PhantomRender.ImGui.Renderers
             OnOverlayRender?.Invoke();
         }
 
+        // --- Input Emulation ---
+        protected PhantomRender.ImGui.Inputs.InputEmulator _inputEmulator;
+
         protected unsafe void InitializeImGui(IntPtr windowHandle)
         {
             _windowHandle = windowHandle;
@@ -47,7 +50,7 @@ namespace PhantomRender.ImGui.Renderers
             Console.Out.Flush();
             IO.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
             
-            // Initialize Win32 Backend (with SetCurrentContext like the working project)
+            // Initialize Win32 Backend
             Console.WriteLine("[PhantomRender] Step 5: ImGuiImplWin32.SetCurrentContext...");
             Console.Out.Flush();
             ImGuiImplWin32.SetCurrentContext(Context);
@@ -55,6 +58,10 @@ namespace PhantomRender.ImGui.Renderers
             Console.WriteLine("[PhantomRender] Step 6: ImGuiImplWin32.Init...");
             Console.Out.Flush();
             ImGuiImplWin32.Init((void*)windowHandle);
+            
+            // Initialize Input Emulator
+            Console.WriteLine("[PhantomRender] Initializing Input Emulator...");
+            _inputEmulator = new PhantomRender.ImGui.Inputs.InputEmulator(IO, windowHandle);
             
             Console.WriteLine("[PhantomRender] InitializeImGui completed successfully.");
             Console.Out.Flush();
