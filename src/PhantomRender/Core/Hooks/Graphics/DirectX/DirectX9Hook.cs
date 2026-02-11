@@ -34,7 +34,8 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         public event Action<IntPtr> OnEndScene;
         public event Action<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> OnPresent;
-        public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnReset;
+        public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnBeforeReset;
+        public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnAfterReset;
 
         private HookEngine _hookEngine;
         
@@ -42,7 +43,7 @@ namespace PhantomRender.Core.Hooks.Graphics
         private PresentDelegate _originalPresent;
         private ResetDelegate _originalReset;
 
-        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.EndScene)
+        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.EndScene | DX9HookFlags.Reset)
         {
             _hookEngine = new HookEngine();
 
@@ -110,13 +111,28 @@ namespace PhantomRender.Core.Hooks.Graphics
         {
             try
             {
-                OnReset?.Invoke(device, pPresentationParameters);
+                OnBeforeReset?.Invoke(device, pPresentationParameters);
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[PhantomRender] DX9 Reset error: {ex.Message}");
+                Console.WriteLine($"[PhantomRender] DX9 Pre-Reset error: {ex.Message}");
             }
-            return _originalReset(device, ref pPresentationParameters);
+
+            int result = _originalReset(device, ref pPresentationParameters);
+
+            if (result >= 0) // D3D_OK or success
+            {
+                try
+                {
+                    OnAfterReset?.Invoke(device, pPresentationParameters);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DX9 Post-Reset error: {ex.Message}");
+                }
+            }
+
+            return result;
         }
 
         public void Dispose()

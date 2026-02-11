@@ -58,6 +58,30 @@ namespace PhantomRender.ImGui
                     }
                 };
 
+                _dx9Hook.OnBeforeReset += (device, pp) =>
+                {
+                    lock (_dx9Lock)
+                    {
+                        if (_dx9Renderer.IsInitialized)
+                        {
+                            Console.WriteLine("[PhantomRender] DX9 Pre-Reset: Invalidating device objects...");
+                            _dx9Renderer.OnLostDevice();
+                        }
+                    }
+                };
+
+                _dx9Hook.OnAfterReset += (device, pp) =>
+                {
+                    lock (_dx9Lock)
+                    {
+                        if (_dx9Renderer.IsInitialized)
+                        {
+                            Console.WriteLine("[PhantomRender] DX9 Post-Reset: Recreating device objects...");
+                            _dx9Renderer.OnResetDevice();
+                        }
+                    }
+                };
+
                 _dx9Hook.Enable();
                 Console.WriteLine("[PhantomRender] DX9 Hook Enabled.");
             }
