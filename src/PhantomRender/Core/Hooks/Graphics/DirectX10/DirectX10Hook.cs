@@ -1,17 +1,63 @@
 using System;
 using System.Runtime.InteropServices;
+using MinHook;
 using PhantomRender.Core.Native;
+using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Graphics
 {
-    public class DirectX10Hook : VTableHook
+    public class DirectX10Hook : IDisposable
     {
-        // IDXGISwapChain VTable indices (Identical to DX11: Present=8 is standard for IDXGISwapChain)
+        // IDXGISwapChain VTable indices
         private const int VTABLE_Present = 8;
         
-        public DirectX10Hook(IntPtr swapChainAddress) 
-            : base(swapChainAddress, VTABLE_Present, IntPtr.Zero)
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
+
+        public event Action<IntPtr, uint, uint> OnPresent;
+
+        private HookEngine _hookEngine;
+        private PresentDelegate _originalPresent;
+
+        public DirectX10Hook(IntPtr swapChainAddress)
         {
+            _hookEngine = new HookEngine();
+
+            // Read VTable from swapChain instance
+            IntPtr vTable = MemoryUtils.ReadIntPtr(swapChainAddress);
+            IntPtr presentAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_Present * IntPtr.Size);
+
+            _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddr, new PresentDelegate(PresentHook));
+        }
+
+        public void Enable()
+        {
+            _hookEngine.EnableHooks();
+            Console.WriteLine("[PhantomRender] DX10 Present Hook Enabled (MinHook).");
+        }
+
+        public void Disable()
+        {
+            _hookEngine.DisableHooks();
+        }
+
+        private int PresentHook(IntPtr swapChain, uint syncInterval, uint flags)
+        {
+            try
+            {
+                OnPresent?.Invoke(swapChain, syncInterval, flags);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX10 Present error: {ex.Message}");
+            }
+            return _originalPresent(swapChain, syncInterval, flags);
+        }
+
+        public void Dispose()
+        {
+            _hookEngine?.Dispose();
+            GC.SuppressFinalize(this);
         }
 
         public static IntPtr GetSwapChainAddress()

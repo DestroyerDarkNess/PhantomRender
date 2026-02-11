@@ -4,12 +4,12 @@ using PhantomRender.Core.Native;
 
 namespace PhantomRender.Core.Hooks.Inputs
 {
-    public class WindowSubclassHook : IHook
+    public class WindowSubclassHook : IDisposable
     {
         private readonly IntPtr _hWnd;
         private readonly SUBCLASSPROC _subclassProc;
         private bool _isEnabled;
-        private readonly IntPtr _uIdSubclass = (IntPtr)1337; // Unique ID for our subclass
+        private readonly IntPtr _uIdSubclass = (IntPtr)1337;
 
         public delegate IntPtr WndProcDelegate(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
         public event WndProcDelegate OnWndProc;
@@ -40,32 +40,18 @@ namespace PhantomRender.Core.Hooks.Inputs
 
         public bool IsEnabled => _isEnabled;
 
-        public IntPtr OriginalFunction => IntPtr.Zero; // Not applicable for Subclassing
-
         public void Dispose()
         {
             Disable();
+            GC.SuppressFinalize(this);
         }
 
         private IntPtr SubclassProc(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, IntPtr uIdSubclass, IntPtr dwRefData)
         {
-            if (OnWndProc != null)
-            {
-                // Allow valid input processing or blocking
-                // If OnWndProc returns IntPtr.Zero, we continue? 
-                // Let's assume standard WndProc behavior: return value matters if we handle it.
-                // But for a hook, we usually want to "peek" and maybe "consume".
-                
-                // For now, let's just invoke. 
-                // If we want to block, we might need a ref bool 'handled'.
-                // keeping it simple: observe only for now.
-                OnWndProc(hWnd, uMsg, wParam, lParam);
-            }
-
+            OnWndProc?.Invoke(hWnd, uMsg, wParam, lParam);
             return DefSubclassProc(hWnd, uMsg, wParam, lParam);
         }
 
-        // Native imports
         private delegate IntPtr SUBCLASSPROC(IntPtr hWnd, uint uMsg, IntPtr wParam, IntPtr lParam, IntPtr uIdSubclass, IntPtr dwRefData);
 
         [DllImport("comctl32.dll", SetLastError = true)]
