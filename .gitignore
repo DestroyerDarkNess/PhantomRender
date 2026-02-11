@@ -41,6 +41,7 @@ publish/
 x86/
 x64/
 obj/
+Hexa.NET.ImGui-main/
 packages/
 Other/
 PhantomRender.md

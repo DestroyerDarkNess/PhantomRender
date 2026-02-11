@@ -75,8 +75,29 @@ namespace PhantomRender.Core.Hooks.Graphics
             IntPtr device;
             if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
             {
-                // Note: GetDevice adds a ref, we should probably release it after use if we don't store it.
-                // But for ImGui, we'll pass it to the renderer.
+                return device;
+            }
+
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// Tries to get the device as ID3D11Device from the swapchain.
+        /// Returns IntPtr.Zero if the device is not DX11.
+        /// </summary>
+        public unsafe IntPtr GetDeviceAs11(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain);
+            IntPtr getDeviceAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_GetDevice * IntPtr.Size);
+
+            var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
+
+            Guid iid = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140"); // IID_ID3D11Device
+            IntPtr device;
+            if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
+            {
                 return device;
             }
 
@@ -129,6 +150,9 @@ namespace PhantomRender.Core.Hooks.Graphics
                 if (result >= 0 && swapChain != IntPtr.Zero)
                 {
                     Marshal.Release(device);
+                    // Note: We intentionally don't release the dummy swapChain here —
+                    // we need it alive to read its VTable in the constructor.
+                    // It will be leaked, but that's standard for hooking dummy objects.
                     return swapChain;
                 }
 

@@ -24,8 +24,8 @@ namespace PhantomRender.ImGui
             try { InitializeDX9(); }
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
 
-            try { InitializeDX10(); }
-            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX10 Init Failed: {ex}"); }
+            try { InitializeDXGI(); }
+            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DXGI Init Failed: {ex}"); }
 
             try { InitializeOpenGL(); }
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
@@ -97,44 +97,78 @@ namespace PhantomRender.ImGui
             }
         }
 
-        private static object _dx10Lock = new object();
+        private static object _dxgiLock = new object();
+        private static DirectX11Renderer _dx11Renderer;
 
-        private static void InitializeDX10()
+        /// <summary>
+        /// Unified DXGI initialization.
+        /// Both DX10 and DX11 share IDXGISwapChain::Present, so we only need ONE hook.
+        /// In the OnPresent callback, we auto-detect the actual device type:
+        ///   - Try IID_ID3D11Device first → use DX11 renderer
+        ///   - Fall back to IID_ID3D10Device → use DX10 renderer
+        /// </summary>
+        private static void InitializeDXGI()
         {
             var swapChainAddr = DirectX10Hook.GetSwapChainAddress();
             if (swapChainAddr != IntPtr.Zero)
             {
                 _dx10Hook = new DirectX10Hook(swapChainAddr);
-                _dx10Renderer = new DirectX10Renderer();
+                // Don't create renderers yet — we'll detect which one is needed
 
                 _dx10Hook.OnPresent += (swapChain, syncInterval, flags) =>
                 {
-                    if (!_dx10Renderer.IsInitialized)
+                    // Check if either renderer is already initialized
+                    bool hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                                    || (_dx10Renderer != null && _dx10Renderer.IsInitialized);
+
+                    if (!hasRenderer)
                     {
-                        lock (_dx10Lock)
+                        lock (_dxgiLock)
                         {
-                            if (!_dx10Renderer.IsInitialized)
+                            // Double-check after acquiring lock
+                            hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                                       || (_dx10Renderer != null && _dx10Renderer.IsInitialized);
+                            if (!hasRenderer)
                             {
-                                Console.WriteLine("[PhantomRender] DX10 OnPresent - Initializing Renderer...");
+                                Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
                                 IntPtr hWnd = GetWindowHandleFailSafe();
-                                
-                                IntPtr device = _dx10Hook.GetDevice(swapChain);
-                                if (device != IntPtr.Zero)
+
+                                // 1. Try DX11 first (most modern games use DX11)
+                                IntPtr dx11Device = _dx10Hook.GetDeviceAs11(swapChain);
+                                if (dx11Device != IntPtr.Zero)
                                 {
-                                    Console.WriteLine($"[PhantomRender] DX10 Device found: {device}. Target Window: {hWnd}");
-                                    _dx10Renderer.Initialize(device, hWnd);
-                                    // Release the extra ref from GetDevice
-                                    Marshal.Release(device);
+                                    Console.WriteLine($"[PhantomRender] DXGI: Detected DX11 device: {dx11Device}. Window: {hWnd}");
+                                    _dx11Renderer = new DirectX11Renderer();
+                                    _dx11Renderer.Initialize(dx11Device, hWnd);
+                                    Marshal.Release(dx11Device); // Release extra ref from GetDeviceAs11
                                 }
                                 else
                                 {
-                                    Console.WriteLine("[PhantomRender] DX10 Device NOT found in SwapChain!");
+                                    // 2. Fall back to DX10
+                                    IntPtr dx10Device = _dx10Hook.GetDevice(swapChain);
+                                    if (dx10Device != IntPtr.Zero)
+                                    {
+                                        Console.WriteLine($"[PhantomRender] DXGI: Detected DX10 device: {dx10Device}. Window: {hWnd}");
+                                        _dx10Renderer = new DirectX10Renderer();
+                                        _dx10Renderer.Initialize(dx10Device, hWnd);
+                                        Marshal.Release(dx10Device); // Release extra ref from GetDevice
+                                    }
+                                    else
+                                    {
+                                        Console.WriteLine("[PhantomRender] DXGI: Could NOT detect any device from SwapChain!");
+                                    }
                                 }
                             }
                         }
                     }
 
-                    if (_dx10Renderer.IsInitialized)
+                    // Render with whichever renderer was initialized
+                    if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                    {
+                        _dx11Renderer.NewFrame();
+                        _dx11Renderer.Render();
+                    }
+                    else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
                     {
                         _dx10Renderer.NewFrame();
                         _dx10Renderer.Render();
@@ -142,7 +176,7 @@ namespace PhantomRender.ImGui
                 };
                 
                 _dx10Hook.Enable();
-                Console.WriteLine("[PhantomRender] DX10 Hook Enabled.");
+                Console.WriteLine("[PhantomRender] DXGI Present Hook Enabled (auto-detects DX10/DX11).");
             }
         }
 
