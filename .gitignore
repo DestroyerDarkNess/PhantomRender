@@ -37,6 +37,9 @@ ipch/
 
 # Build output
 bin/
+publish/
+x86/
+x64/
 obj/
 packages/
 Other/

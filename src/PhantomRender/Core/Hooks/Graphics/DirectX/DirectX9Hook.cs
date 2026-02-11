@@ -6,40 +6,78 @@ using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Graphics
 {
+    [Flags]
+    public enum DX9HookFlags
+    {
+        None = 0,
+        EndScene = 1 << 0,
+        Present = 1 << 1,
+        Reset = 1 << 2,
+        All = EndScene | Present | Reset
+    }
+
     public class DirectX9Hook : IDisposable
     {
         // VTable indices for IDirect3DDevice9
+        private const int VTABLE_Reset = 16;
+        private const int VTABLE_Present = 17;
         private const int VTABLE_EndScene = 42;
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int EndSceneDelegate(IntPtr device);
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int PresentDelegate(IntPtr device, IntPtr sourceRect, IntPtr destRect, IntPtr hDestWindowOverride, IntPtr dirtyRegion);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int ResetDelegate(IntPtr device, ref Direct3D9.D3DPRESENT_PARAMETERS pPresentationParameters);
+
         public event Action<IntPtr> OnEndScene;
+        public event Action<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> OnPresent;
+        public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnReset;
 
         private HookEngine _hookEngine;
+        
         private EndSceneDelegate _originalEndScene;
+        private PresentDelegate _originalPresent;
+        private ResetDelegate _originalReset;
 
-        public DirectX9Hook(IntPtr deviceAddress)
+        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.EndScene)
         {
             _hookEngine = new HookEngine();
 
             // Read VTable from device instance
             IntPtr vTable = MemoryUtils.ReadIntPtr(deviceAddress);
-            IntPtr endSceneAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_EndScene * IntPtr.Size);
 
-            // Create the hook
-            _originalEndScene = _hookEngine.CreateHook<EndSceneDelegate>(endSceneAddr, new EndSceneDelegate(EndSceneHook));
+            // Setup hooks based on flags
+            if (flags.HasFlag(DX9HookFlags.EndScene))
+            {
+                IntPtr endSceneAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_EndScene * IntPtr.Size);
+                _originalEndScene = _hookEngine.CreateHook<EndSceneDelegate>(endSceneAddr, new EndSceneDelegate(EndSceneHook));
+            }
+
+            if (flags.HasFlag(DX9HookFlags.Present))
+            {
+                IntPtr presentAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_Present * IntPtr.Size);
+                _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddr, new PresentDelegate(PresentHook));
+            }
+
+            if (flags.HasFlag(DX9HookFlags.Reset))
+            {
+                IntPtr resetAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_Reset * IntPtr.Size);
+                _originalReset = _hookEngine.CreateHook<ResetDelegate>(resetAddr, new ResetDelegate(ResetHook));
+            }
         }
 
         public void Enable()
         {
-            _hookEngine.EnableHook(_originalEndScene);
-            Console.WriteLine("[PhantomRender] DX9 EndScene Hook Enabled (MinHook NuGet).");
+            _hookEngine.EnableHooks();
+            Console.WriteLine("[PhantomRender] DX9 Selective Hooks Enabled.");
         }
 
         public void Disable()
         {
-            _hookEngine.DisableHook(_originalEndScene);
+            _hookEngine.DisableHooks();
         }
 
         private int EndSceneHook(IntPtr device)
@@ -52,8 +90,33 @@ namespace PhantomRender.Core.Hooks.Graphics
             {
                 Console.WriteLine($"[PhantomRender] DX9 EndScene error: {ex.Message}");
             }
-
             return _originalEndScene(device);
+        }
+
+        private int PresentHook(IntPtr device, IntPtr sourceRect, IntPtr destRect, IntPtr hDestWindowOverride, IntPtr dirtyRegion)
+        {
+            try
+            {
+                OnPresent?.Invoke(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX9 Present error: {ex.Message}");
+            }
+            return _originalPresent(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
+        }
+
+        private int ResetHook(IntPtr device, ref Direct3D9.D3DPRESENT_PARAMETERS pPresentationParameters)
+        {
+            try
+            {
+                OnReset?.Invoke(device, pPresentationParameters);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX9 Reset error: {ex.Message}");
+            }
+            return _originalReset(device, ref pPresentationParameters);
         }
 
         public void Dispose()
