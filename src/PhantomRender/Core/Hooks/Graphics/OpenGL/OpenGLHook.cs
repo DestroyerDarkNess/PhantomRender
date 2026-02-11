@@ -46,8 +46,7 @@ namespace PhantomRender.Core.Hooks.Graphics.OpenGL
                 Console.WriteLine($"[PhantomRender] OpenGL SwapBuffers error: {ex.Message}");
             }
 
-            // Using GdiSwapBuffers directly as it's more stable for wglSwapBuffers hooks
-            return GdiSwapBuffers(hdc) ? 1 : 0;
+            return _originalSwapBuffers(hdc);
         }
 
         public void Dispose()

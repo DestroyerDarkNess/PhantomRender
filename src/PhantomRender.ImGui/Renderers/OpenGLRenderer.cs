@@ -15,7 +15,7 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
-                Console.WriteLine($"[PhantomRender] Initalizing ImGui for Window: {windowHandle}");
+                Console.WriteLine($"[PhantomRender] OpenGLRenderer: Entering Initialize (RE-PUBLISHED V2). Window: {windowHandle}");
                 Console.Out.Flush();
                 InitializeImGui(windowHandle);
 
@@ -23,32 +23,37 @@ namespace PhantomRender.ImGui.Renderers
                 string glslVersion = DetectGLSLVersion();
                 if (glslVersion == null)
                 {
-                    Console.WriteLine("[PhantomRender] OpenGL version too old (< 2.0), cannot use ImGui OpenGL3 backend!");
+                    Console.WriteLine("[PhantomRender] OpenGLRenderer: Version too old (< 2.0)!");
+                    Console.Out.Flush();
                     ShutdownImGui();
                     return false;
                 }
 
-                // Initialize OpenGL3 Backend (with SetCurrentContext like the working project)
-                Console.WriteLine($"[PhantomRender] ImGuiImplOpenGL3.SetCurrentContext...");
+                // Initialize OpenGL3 Backend
+                Console.WriteLine("[PhantomRender] OpenGLRenderer: Setting context for OpenGL3 backend...");
                 Console.Out.Flush();
                 ImGuiImplOpenGL3.SetCurrentContext(Context);
 
-                Console.WriteLine($"[PhantomRender] Initializing OpenGL3 Backend with version: {glslVersion}");
+                Console.WriteLine($"[PhantomRender] OpenGLRenderer: Calling ImGuiImplOpenGL3.Init with {glslVersion}...");
                 Console.Out.Flush();
+                
                 if (!ImGuiImplOpenGL3.Init(glslVersion))
                 {
-                    Console.WriteLine("[PhantomRender] ImGuiImplOpenGL3.Init returned false!");
+                    Console.WriteLine("[PhantomRender] OpenGLRenderer: ImGuiImplOpenGL3.Init returned FALSE!");
+                    Console.Out.Flush();
                     ShutdownImGui();
                     return false;
                 }
 
                 IsInitialized = true;
-                Console.WriteLine("[PhantomRender] OpenGLRenderer Initialized Successfully!");
+                Console.WriteLine("[PhantomRender] OpenGLRenderer: Initialized Successfully! (V2)");
+                Console.Out.Flush();
                 return true;
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[PhantomRender] OpenGLRenderer Initialization Error: {ex}");
+                Console.WriteLine($"[PhantomRender] OpenGLRenderer: Init Error (V2): {ex}");
+                Console.Out.Flush();
                 return false;
             }
         }
@@ -57,6 +62,10 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (!IsInitialized) return;
             if (_frameStarted) return;
+
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+            ImGuiImplOpenGL3.SetCurrentContext(Context);
+            ImGuiImplWin32.SetCurrentContext(Context);
 
             ImGuiImplOpenGL3.NewFrame();
             ImGuiImplWin32.NewFrame();
@@ -70,6 +79,17 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (!IsInitialized) return;
             if (!_frameStarted) return;
+
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+
+            // Test window for testing
+            Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(100, 100), ImGuiCond.FirstUseEver);
+            if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender OpenGL"))
+            {
+                Hexa.NET.ImGui.ImGui.Text("Status: Active (OpenGL)");
+                Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
+                Hexa.NET.ImGui.ImGui.End();
+            }
 
             // Demo window for testing
             Hexa.NET.ImGui.ImGui.ShowDemoWindow();
