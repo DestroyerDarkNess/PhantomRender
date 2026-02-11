@@ -1,34 +1,59 @@
 using System;
 using System.Runtime.InteropServices;
-using PhantomRender.Core.Hooks;
+using MinHook;
 
 namespace PhantomRender.Core.Hooks.Graphics.OpenGL
 {
-    public class OpenGLHook : SimpleInlineHook
+    public class OpenGLHook : IDisposable
     {
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int wglSwapBuffersDelegate(IntPtr hdc);
 
-        private wglSwapBuffersDelegate _hookDelegate;
         public event Action<IntPtr> OnSwapBuffers;
 
-        public OpenGLHook() 
-            : base("opengl32.dll", "wglSwapBuffers")
+        private HookEngine _hookEngine;
+        private wglSwapBuffersDelegate _originalSwapBuffers;
+
+        [DllImport("gdi32.dll", EntryPoint = "SwapBuffers", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GdiSwapBuffers(IntPtr hdc);
+
+        public OpenGLHook()
         {
-            _hookDelegate = new wglSwapBuffersDelegate(wglSwapBuffersHook);
-            SetHook(Marshal.GetFunctionPointerForDelegate(_hookDelegate));
+            _hookEngine = new HookEngine();
+            _originalSwapBuffers = _hookEngine.CreateHook<wglSwapBuffersDelegate>("opengl32.dll", "wglSwapBuffers", new wglSwapBuffersDelegate(SwapBuffersHook));
         }
 
-        private int wglSwapBuffersHook(IntPtr hdc)
+        public void Enable()
         {
-            OnSwapBuffers?.Invoke(hdc);
+            _hookEngine.EnableHook(_originalSwapBuffers);
+            Console.WriteLine("[PhantomRender] OpenGL wglSwapBuffers Hook Enabled (MinHook NuGet).");
+        }
 
-            if (OriginalFunction != IntPtr.Zero)
+        public void Disable()
+        {
+            _hookEngine.DisableHook(_originalSwapBuffers);
+        }
+
+        private int SwapBuffersHook(IntPtr hdc)
+        {
+            try
             {
-                var original = Marshal.GetDelegateForFunctionPointer<wglSwapBuffersDelegate>(OriginalFunction);
-                return original(hdc);
+                OnSwapBuffers?.Invoke(hdc);
             }
-            return 1; // TRUE (Fail safe, though OriginalFunction should exist if Enabled)
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] OpenGL SwapBuffers error: {ex.Message}");
+            }
+
+            // Using GdiSwapBuffers directly as it's more stable for wglSwapBuffers hooks
+            return GdiSwapBuffers(hdc) ? 1 : 0;
+        }
+
+        public void Dispose()
+        {
+            _hookEngine?.Dispose();
+            GC.SuppressFinalize(this);
         }
     }
 }

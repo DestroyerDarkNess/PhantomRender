@@ -1,42 +1,66 @@
 using System;
 using System.Runtime.InteropServices;
+using MinHook;
 using PhantomRender.Core.Native;
 using PhantomRender.Core.Memory;
 
 namespace PhantomRender.Core.Hooks.Graphics
 {
-    public class DirectX9Hook : VTableHook
+    public class DirectX9Hook : IDisposable
     {
         // VTable indices for IDirect3DDevice9
-        private const int VTABLE_Present = 17;
         private const int VTABLE_EndScene = 42;
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int EndSceneDelegate(IntPtr device);
-        public event Action<IntPtr> OnEndScene;
-        private EndSceneDelegate _hookDelegate;
 
-        public DirectX9Hook(IntPtr deviceAddress) 
-            : base(deviceAddress, VTABLE_EndScene, IntPtr.Zero)
+        public event Action<IntPtr> OnEndScene;
+
+        private HookEngine _hookEngine;
+        private EndSceneDelegate _originalEndScene;
+
+        public DirectX9Hook(IntPtr deviceAddress)
         {
-            _hookDelegate = new EndSceneDelegate(EndSceneHook);
-            NewFunctionAddress = Marshal.GetFunctionPointerForDelegate(_hookDelegate);
+            _hookEngine = new HookEngine();
+
+            // Read VTable from device instance
+            IntPtr vTable = MemoryUtils.ReadIntPtr(deviceAddress);
+            IntPtr endSceneAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_EndScene * IntPtr.Size);
+
+            // Create the hook
+            _originalEndScene = _hookEngine.CreateHook<EndSceneDelegate>(endSceneAddr, new EndSceneDelegate(EndSceneHook));
+        }
+
+        public void Enable()
+        {
+            _hookEngine.EnableHook(_originalEndScene);
+            Console.WriteLine("[PhantomRender] DX9 EndScene Hook Enabled (MinHook NuGet).");
+        }
+
+        public void Disable()
+        {
+            _hookEngine.DisableHook(_originalEndScene);
         }
 
         private int EndSceneHook(IntPtr device)
         {
-            OnEndScene?.Invoke(device);
-            
-            if (OriginalFunction != IntPtr.Zero)
+            try
             {
-                var original = Marshal.GetDelegateForFunctionPointer<EndSceneDelegate>(OriginalFunction);
-                return original(device);
+                OnEndScene?.Invoke(device);
             }
-            return 0; // D3D_OK
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX9 EndScene error: {ex.Message}");
+            }
+
+            return _originalEndScene(device);
         }
-        
-        // This method creates a dummy device to get the VTable address
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int Direct3DCreate9Delegate(uint SDKVersion);
+
+        public void Dispose()
+        {
+            _hookEngine?.Dispose();
+            GC.SuppressFinalize(this);
+        }
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CreateDeviceDelegate(IntPtr instance, uint adapter, int deviceType, IntPtr hFocusWindow, uint behaviorFlags, ref Direct3D9.D3DPRESENT_PARAMETERS pPresentationParameters, out IntPtr returnedDeviceInterface);
@@ -54,57 +78,38 @@ namespace PhantomRender.Core.Hooks.Graphics
                 var d3d = Direct3D9.Direct3DCreate9(Direct3D9.D3D_SDK_VERSION);
                 if (d3d == IntPtr.Zero)
                 {
-                    // Try Ex
-                     if (Direct3D9.Direct3DCreate9Ex(Direct3D9.D3D_SDK_VERSION, out d3d) < 0)
+                    if (Direct3D9.Direct3DCreate9Ex(Direct3D9.D3D_SDK_VERSION, out d3d) < 0)
                         return IntPtr.Zero;
                 }
 
                 var presentParams = new Direct3D9.D3DPRESENT_PARAMETERS
                 {
                     Windowed = 1,
-                    SwapEffect = 1, // D3DSWAPEFFECT_DISCARD
+                    SwapEffect = 1,
                     hDeviceWindow = hWnd,
                     BackBufferCount = 1,
                     BackBufferWidth = 4,
                     BackBufferHeight = 4,
-                    BackBufferFormat = 0 // D3DFMT_UNKNOWN
+                    BackBufferFormat = 0
                 };
 
                 IntPtr device = IntPtr.Zero;
                 IntPtr vTable = MemoryUtils.ReadIntPtr(d3d);
-                
-                // If Ex, the VTable for IDirect3D9Ex might differ slightly in creation methods, 
-                // but we need a device.
-                // IDirect3D9Ex::CreateDeviceEx is likely what we need if CreateDevice fails or isn't there?
-                // Actually IDirect3D9Ex inherits from IDirect3D9, so CreateDevice (index 16) should theoretically work
-                // or we use CreateDeviceEx (index 20).
-                
-                // Let's safe bet on 16 first, if it works.
+
                 IntPtr createDevicePtr = MemoryUtils.ReadIntPtr(vTable + 16 * IntPtr.Size);
-                
                 var createDevice = Marshal.GetDelegateForFunctionPointer<CreateDeviceDelegate>(createDevicePtr);
                 int result = createDevice(d3d, 0, Direct3D9.D3DDEVTYPE_HAL, hWnd, Direct3D9.D3DCREATE_SOFTWARE_VERTEXPROCESSING, ref presentParams, out device);
-                
-                if (result < 0) // Failed
+
+                if (result < 0)
                 {
-                    // Try with NULL window if handle specific failed, or different flags
-                    // For now, simpler error handling
-                     var releaseD3D = Marshal.GetDelegateForFunctionPointer<ReleaseDelegate>(MemoryUtils.ReadIntPtr(vTable + 2 * IntPtr.Size));
-                     releaseD3D(d3d);
-                     return IntPtr.Zero;
+                    var releaseD3D = Marshal.GetDelegateForFunctionPointer<ReleaseDelegate>(MemoryUtils.ReadIntPtr(vTable + 2 * IntPtr.Size));
+                    releaseD3D(d3d);
+                    return IntPtr.Zero;
                 }
 
-                // We have the device!
-                // We should release d3d immediately
                 var release = Marshal.GetDelegateForFunctionPointer<ReleaseDelegate>(MemoryUtils.ReadIntPtr(vTable + 2 * IntPtr.Size));
                 release(d3d);
-                
-                // We return the device pointer. 
-                // Note: In a real scenario, we might want to release this device after reading its VTable.
-                // But typically we keep the VTable address and release the object.
-                // Here we return the object address so the caller can read VTable and hook, then release.
-                // Ideally, the caller should manage lifecycle.
-                // For this helper, we'll return the device and let the caller release it using ReleaseDelegate (index 2).
+
                 return device;
             }
             finally

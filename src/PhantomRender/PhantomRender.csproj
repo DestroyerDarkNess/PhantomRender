@@ -7,4 +7,8 @@
     <Platforms>x64;x86</Platforms>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="MinHook.NET" Version="1.1.2" />
+  </ItemGroup>
+
 </Project>
