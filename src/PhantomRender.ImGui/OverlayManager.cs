@@ -131,7 +131,7 @@ namespace PhantomRender.ImGui
                             if (!hasRenderer)
                             {
                                 Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
-                                IntPtr hWnd = GetWindowHandleFailSafe();
+                                IntPtr hWnd = ResolveWindowHandleFromSwapChain(swapChain);
 
                                 // 1. Try DX11 first (most modern games use DX11)
                                 IntPtr dx11Device = _dx10Hook.GetDeviceAs11(swapChain);
@@ -166,7 +166,7 @@ namespace PhantomRender.ImGui
                     if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
                     {
                         _dx11Renderer.NewFrame();
-                        _dx11Renderer.Render();
+                        _dx11Renderer.Render(swapChain);
                     }
                     else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
                     {
@@ -240,6 +240,23 @@ namespace PhantomRender.ImGui
             catch { }
             
             return IntPtr.Zero;
+        }
+
+        private static IntPtr ResolveWindowHandleFromSwapChain(IntPtr swapChain)
+        {
+            try
+            {
+                if (_dx10Hook != null && _dx10Hook.TryGetOutputWindow(swapChain, out IntPtr swapChainWindow) && swapChainWindow != IntPtr.Zero)
+                {
+                    Console.WriteLine($"[PhantomRender] DXGI: Using swapchain OutputWindow: {swapChainWindow}");
+                    return swapChainWindow;
+                }
+            }
+            catch { }
+
+            IntPtr fallback = GetWindowHandleFailSafe();
+            Console.WriteLine($"[PhantomRender] DXGI: Using fail-safe window: {fallback}");
+            return fallback;
         }
     }
 }

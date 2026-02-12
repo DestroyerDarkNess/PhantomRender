@@ -11,6 +11,7 @@ namespace PhantomRender.Core.Hooks.Graphics
         // IDXGISwapChain VTable indices
         private const int VTABLE_GetDevice = 7;
         private const int VTABLE_Present = 8;
+        private const int VTABLE_GetDesc = 12;
         
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
@@ -106,6 +107,36 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int GetDeviceDelegate(IntPtr swapChain, ref Guid riid, out IntPtr ppDevice);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetDescDelegate(IntPtr swapChain, out DXGI.DXGI_SWAP_CHAIN_DESC pDesc);
+
+        public bool TryGetOutputWindow(IntPtr swapChain, out IntPtr outputWindow)
+        {
+            outputWindow = IntPtr.Zero;
+            if (swapChain == IntPtr.Zero) return false;
+
+            try
+            {
+                IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain);
+                IntPtr getDescAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_GetDesc * IntPtr.Size);
+                var getDesc = Marshal.GetDelegateForFunctionPointer<GetDescDelegate>(getDescAddr);
+
+                DXGI.DXGI_SWAP_CHAIN_DESC desc;
+                int hr = getDesc(swapChain, out desc);
+                if (hr >= 0 && desc.OutputWindow != IntPtr.Zero)
+                {
+                    outputWindow = desc.OutputWindow;
+                    return true;
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DXGI: GetDesc failed: {ex.Message}");
+            }
+
+            return false;
+        }
 
         public static IntPtr GetSwapChainAddress()
         {
