@@ -25,6 +25,7 @@ namespace PhantomRender.ImGui.Renderers
         private const int VTABLE_ID3D12Device_CreateFence = 36;
 
         // ID3D12DescriptorHeap vtable indices.
+        private const int VTABLE_ID3D12DescriptorHeap_GetDesc = 8;
         private const int VTABLE_ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart = 9;
         private const int VTABLE_ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart = 10;
 
@@ -140,6 +141,9 @@ namespace PhantomRender.ImGui.Renderers
         private delegate int CreateDescriptorHeapDelegate(IntPtr device, ref D3D12_DESCRIPTOR_HEAP_DESC desc, ref Guid riid, out IntPtr heap);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate void GetDescDelegate(out D3D12_DESCRIPTOR_HEAP_DESC pDesc, IntPtr heap);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate uint GetDescriptorHandleIncrementSizeDelegate(IntPtr device, int type);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
@@ -154,15 +158,14 @@ namespace PhantomRender.ImGui.Renderers
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CreateFenceDelegate(IntPtr device, ulong initialValue, int flags, ref Guid riid, out IntPtr fence);
 
-        // NOTE: COM x64 ABI - methods returning structs use a hidden output pointer.
-        // The vtable entry signature is: void(this, D3D12_CPU_DESCRIPTOR_HANDLE* pResult)
+        // NOTE: COM x64 ABI for D3D12 Handles (8 bytes) - Historical C-ABI requires (this, &result) order.
+        // This means RCX = this, RDX = out result. 
+        // Using return values or (out, this) order causes VTable corruption.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate void GetCPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out nuint result);
+        private delegate void GetCPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out D3D12CpuDescriptorHandle handle);
 
-        // NOTE: COM x64 ABI - methods returning structs use a hidden output pointer.
-        // The vtable entry signature is: void(this, D3D12_GPU_DESCRIPTOR_HANDLE* pResult)
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate void GetGPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out ulong result);
+        private delegate void GetGPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out D3D12GpuDescriptorHandle handle);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void RSSetViewportsDelegate(IntPtr commandList, uint numViewports, D3D12_VIEWPORT* pViewports);
@@ -203,6 +206,28 @@ namespace PhantomRender.ImGui.Renderers
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int FenceSetEventOnCompletionDelegate(IntPtr fence, ulong value, IntPtr hEvent);
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ImGui_ImplDX12_InitInfo_Fixed
+        {
+            public IntPtr Device;
+            public IntPtr CommandQueue;
+            public int NumFramesInFlight;
+            public int RTVFormat;
+            public int DSVFormat;
+            public IntPtr UserData;
+            public IntPtr SrvDescriptorHeap;
+            public IntPtr SrvDescriptorAllocFn;
+            public IntPtr SrvDescriptorFreeFn;
+            public nuint LegacySingleSrvCpuDescriptor;
+            public ulong LegacySingleSrvGpuDescriptor;
+        }
+
+        [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_Init")]
+        private static extern bool CImGui_ImplDX12_Init_Manual(ImGui_ImplDX12_InitInfo_Fixed* info);
+
+        [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_RenderDrawData")]
+        private static extern void CImGui_ImplDX12_RenderDrawData_Manual(ImDrawData* drawData, IntPtr graphicsCommandList);
+        
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr CreateEventW(IntPtr lpEventAttributes, int bManualReset, int bInitialState, string lpName);
 
@@ -355,11 +380,20 @@ namespace PhantomRender.ImGui.Renderers
                     var drawData = Hexa.NET.ImGui.ImGui.GetDrawData();
                     if (_frameCounter <= 5 || _frameCounter % 300 == 0)
                     {
-                        Console.WriteLine($"[PhantomRender] DX12 Frame {_frameCounter}: DrawLists={drawData.CmdListsCount}, Vtx={drawData.TotalVtxCount}, Idx={drawData.TotalIdxCount}");
+                        var io = Hexa.NET.ImGui.ImGui.GetIO();
+                        Console.WriteLine($"[PhantomRender] DX12 Frame {_frameCounter}: Display={io.DisplaySize.X}x{io.DisplaySize.Y}, Valid={drawData.Valid}, DrawLists={drawData.CmdListsCount}, Vtx={drawData.TotalVtxCount}, Idx={drawData.TotalIdxCount}");
                         Console.Out.Flush();
                     }
 
-                    RenderDrawData(drawData);
+                    if (drawData.CmdListsCount > 0)
+                    {
+                        RenderDrawData(drawData);
+                    }
+                    else if (_frameCounter <= 10)
+                    {
+                         Console.WriteLine("[PhantomRender] DX12: Skipping RenderDrawData (CmdListsCount is 0)");
+                         Console.Out.Flush();
+                    }
                 }
                 catch (Exception ex)
                 {
@@ -453,6 +487,9 @@ namespace PhantomRender.ImGui.Renderers
 
         private void ReleaseSwapchainResources()
         {
+            Console.WriteLine("[PhantomRender] DirectX12Renderer: ReleaseSwapchainResources called.");
+            Console.Out.Flush();
+
             try { WaitForGpuIdle(); } catch { }
 
             _swapChainForResources = IntPtr.Zero;
@@ -467,13 +504,13 @@ namespace PhantomRender.ImGui.Renderers
             {
                 for (int i = 0; i < _frames.Length; i++)
                 {
-                    if (_frames[i].RenderTarget != IntPtr.Zero)
+                    if (i < _frames.Length && _frames[i].RenderTarget != IntPtr.Zero)
                     {
                         Marshal.Release(_frames[i].RenderTarget);
                         _frames[i].RenderTarget = IntPtr.Zero;
                     }
 
-                    if (_frames[i].CommandAllocator != IntPtr.Zero)
+                    if (i < _frames.Length && _frames[i].CommandAllocator != IntPtr.Zero)
                     {
                         Marshal.Release(_frames[i].CommandAllocator);
                         _frames[i].CommandAllocator = IntPtr.Zero;
@@ -686,15 +723,21 @@ namespace PhantomRender.ImGui.Renderers
                 NodeMask = 0
             };
 
-            Console.WriteLine($"[PhantomRender] DX12 Init: Creating SRV Heap. Type={srvHeapDesc.Type}, Num={srvHeapDesc.NumDescriptors}, Flags={srvHeapDesc.Flags}");
+            int hr = CreateDescriptorHeap(_device, ref srvHeapDesc, ref iidHeap, out _srvHeap);
+            Console.WriteLine($"[PhantomRender] DX12 Init: CreateDescriptorHeap (SRV) hr=0x{hr:X8}, pointer=0x{_srvHeap:X}");
             Console.Out.Flush();
 
-            if (CreateDescriptorHeap(_device, ref srvHeapDesc, ref iidHeap, out _srvHeap) < 0 || _srvHeap == IntPtr.Zero)
+            if (hr < 0 || _srvHeap == IntPtr.Zero)
             {
                 Console.WriteLine("[PhantomRender] DirectX12Renderer: Failed to create SRV heap.");
-                Console.Out.Flush();
                 return false;
             }
+
+            // We skip GetDesc for now as it risks ABI-related corruption.
+            // But we can check the vtable pointer to see if the object is likely valid.
+            IntPtr srvVtbl = Marshal.ReadIntPtr(_srvHeap);
+            Console.WriteLine($"[PhantomRender] DX12 Init: SRV Heap created. Pointer=0x{_srvHeap:X}, VTable=0x{srvVtbl:X}");
+            Console.Out.Flush();
 
             _srvCpuStart = GetCPUDescriptorHandleForHeapStart(_srvHeap);
             _srvGpuStart = GetGPUDescriptorHandleForHeapStart(_srvHeap);
@@ -716,15 +759,23 @@ namespace PhantomRender.ImGui.Renderers
 
             if (_srvGpuStart.Ptr == 0)
             {
-                Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap GPU start is 0. Trying to verify heap properties...");
-                Console.Out.Flush();
+                Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap GPU start is 0. Running VTable Diagnostic...");
                 
+                // Diagnostic: Dump VTable of Heap (indices 0-15)
+                IntPtr vtbl = Marshal.ReadIntPtr(_srvHeap);
+                Console.WriteLine($"[PhantomRender] DX12 VTable Dump (_srvHeap=0x{_srvHeap:X}): vtbl=0x{vtbl:X}");
+                for (int i = 0; i < 16; i++)
+                {
+                    IntPtr fnPtr = Marshal.ReadIntPtr(vtbl + (i * IntPtr.Size));
+                    Console.WriteLine($"  [{i}] = 0x{fnPtr:X}");
+                }
+                Console.Out.Flush();
+
                 // Add heap verification here if possible (e.g. GetDesc)
                 // For now, we proceed, but it is suspicious.
             }
 
             // Avoid passing a 0 GPU handle into ImGui init in case the backend treats it as "null".
-            // We reserve descriptor slot 0 and use slot 1 for the legacy font SRV.
             const uint legacySrvIndex = 1;
             _imguiSrvCpu = new D3D12CpuDescriptorHandle(_srvCpuStart.Ptr + (nuint)(legacySrvIndex * _srvDescriptorSize));
             _imguiSrvGpu = new D3D12GpuDescriptorHandle(_srvGpuStart.Ptr + (ulong)(legacySrvIndex * _srvDescriptorSize));
@@ -746,15 +797,15 @@ namespace PhantomRender.ImGui.Renderers
                 Console.Out.Flush();
 
                 Guid iidResource = IID_ID3D12Resource;
-                if (GetBuffer(swapChain, i, ref iidResource, out var resource) < 0 || resource == IntPtr.Zero)
+                int bufferHr = GetBuffer(swapChain, i, ref iidResource, out var resource);
+                Console.WriteLine($"[PhantomRender] DX12 Init: GetBuffer({i}) hr=0x{bufferHr:X8}, resource=0x{resource:X}");
+                Console.Out.Flush();
+
+                if (bufferHr < 0 || resource == IntPtr.Zero)
                 {
-                    Console.WriteLine($"[PhantomRender] DirectX12Renderer: GetBuffer({i}) failed.");
-                    Console.Out.Flush();
+                    Console.WriteLine($"[PhantomRender] DirectX12Renderer: GetBuffer({i}) failed (0x{bufferHr:X8}).");
                     return false;
                 }
-
-                Console.WriteLine($"[PhantomRender] DX12 Init: Backbuffer {i} resource={resource}");
-                Console.Out.Flush();
 
                 var rtvHandle = new D3D12CpuDescriptorHandle(_rtvCpuStart.Ptr + (nuint)(i * inc));
                 CreateRenderTargetView(_device, resource, IntPtr.Zero, rtvHandle.Ptr);
@@ -794,7 +845,7 @@ namespace PhantomRender.ImGui.Renderers
             Guid iidCmdList = Direct3D12.IID_ID3D12GraphicsCommandList;
             if (CreateCommandList(_device, 0, D3D12_COMMAND_LIST_TYPE_DIRECT, _frames[0].CommandAllocator, IntPtr.Zero, ref iidCmdList, out _commandList) < 0 || _commandList == IntPtr.Zero)
             {
-                Console.WriteLine("[PhantomRender] DirectX12Renderer: CreateCommandList failed.");
+                    Console.WriteLine("[PhantomRender] DirectX12Renderer: CreateCommandList failed.");
                 Console.Out.Flush();
                 return false;
             }
@@ -835,22 +886,25 @@ namespace PhantomRender.ImGui.Renderers
                 ImGuiImplWin32.SetCurrentContext(Context);
                 ImGuiImplD3D12.SetCurrentContext(Context);
 
-                ImGuiImplDX12InitInfo info = default;
-                info.Device = (ID3D12Device*)_device;
-                info.CommandQueue = (ID3D12CommandQueue*)_commandQueue;
+                ImGui_ImplDX12_InitInfo_Fixed info = default;
+                info.Device = _device;
+                info.CommandQueue = _commandQueue;
                 info.NumFramesInFlight = (int)_bufferCount;
                 info.RTVFormat = _rtvFormat;
                 info.DSVFormat = 0;
-                info.UserData = null;
-                info.SrvDescriptorHeap = (ID3D12DescriptorHeap*)_srvHeap;
-                info.SrvDescriptorAllocFn = null;
-                info.SrvDescriptorFreeFn = null;
-                info.LegacySingleSrvCpuDescriptor = _imguiSrvCpu;
-                info.LegacySingleSrvGpuDescriptor = _imguiSrvGpu;
+                info.UserData = IntPtr.Zero;
+                info.SrvDescriptorHeap = _srvHeap;
+                info.SrvDescriptorAllocFn = IntPtr.Zero;
+                info.SrvDescriptorFreeFn = IntPtr.Zero;
+                info.LegacySingleSrvCpuDescriptor = _imguiSrvCpu.Ptr;
+                info.LegacySingleSrvGpuDescriptor = _imguiSrvGpu.Ptr;
 
-                if (!ImGuiImplD3D12.Init(ref info))
+                Console.WriteLine($"[PhantomRender] DX12: Calling Manual CImGui Init. Heap=0x{info.SrvDescriptorHeap:X}, Queue=0x{info.CommandQueue:X}");
+                Console.Out.Flush();
+
+                if (!CImGui_ImplDX12_Init_Manual(&info))
                 {
-                    Console.WriteLine("[PhantomRender] DirectX12Renderer: ImGuiImplD3D12.Init returned FALSE!");
+                    Console.WriteLine("[PhantomRender] DirectX12Renderer: CImGui_ImplDX12_Init_Manual returned FALSE!");
                     Console.Out.Flush();
                     return false;
                 }
@@ -954,18 +1008,22 @@ namespace PhantomRender.ImGui.Renderers
             if (_frameCounter <= 5)
             {
                 Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frameIdx={frameIndex}, RT=0x{frame.RenderTarget:X}, RTV=0x{rtvPtr:X}, srvHeap=0x{srvHeap:X}, Res={_width}x{_height}");
+                Console.WriteLine($"[PhantomRender] DX12 DrawData Check: Valid={drawData.Valid}, CmdLists={drawData.CmdListsCount}, Pos=({drawData.DisplayPos.X},{drawData.DisplayPos.Y}), Size=({drawData.DisplaySize.X},{drawData.DisplaySize.Y}), Scale=({drawData.FramebufferScale.X},{drawData.FramebufferScale.Y})");
                 Console.Out.Flush();
             }
 
             try
             {
-                // ISOLATION TEST: Disable ImGui render and use ClearRenderTargetView (Green)
-                // If this works without crashing, base DX12 setup is good.
-                
-                // ImGuiImplD3D12.RenderDrawData(drawData, (ID3D12GraphicsCommandList*)_commandList);
-                
-                float* greenColor = stackalloc float[4] { 0.0f, 1.0f, 0.0f, 1.0f };
-                GraphicsCommandListClearRenderTargetView(_commandList, rtvPtr, greenColor, 0, null);
+                // Safety check on DrawData handle
+                if (drawData.Handle == null)
+                {
+                    Console.WriteLine("[PhantomRender] DX12 RenderDrawData: DrawData Handle is NULL!");
+                    Console.Out.Flush();
+                    return;
+                }
+
+                // Using manual P/Invoke to ensure correct entry point and ABI.
+                CImGui_ImplDX12_RenderDrawData_Manual(drawData, _commandList);
             }
             catch (Exception ex)
             {
@@ -1087,24 +1145,35 @@ namespace PhantomRender.ImGui.Renderers
             return fn(device, type);
         }
 
-        private static D3D12CpuDescriptorHandle GetCPUDescriptorHandleForHeapStart(IntPtr heap)
+        private D3D12CpuDescriptorHandle GetCPUDescriptorHandleForHeapStart(IntPtr heap)
         {
             IntPtr addr = GetVTableFunctionAddress(heap, VTABLE_ID3D12DescriptorHeap_GetCPUDescriptorHandleForHeapStart);
             if (addr == IntPtr.Zero) return default;
 
-            var fn = Marshal.GetDelegateForFunctionPointer<GetCPUDescriptorHandleForHeapStartDelegate>(addr);
-            fn(heap, out nuint result);
-            return new D3D12CpuDescriptorHandle(result);
+            var del = Marshal.GetDelegateForFunctionPointer<GetCPUDescriptorHandleForHeapStartDelegate>(addr);
+            del(heap, out var handle);
+            return handle;
         }
 
-        private static D3D12GpuDescriptorHandle GetGPUDescriptorHandleForHeapStart(IntPtr heap)
+        private D3D12GpuDescriptorHandle GetGPUDescriptorHandleForHeapStart(IntPtr heap)
         {
             IntPtr addr = GetVTableFunctionAddress(heap, VTABLE_ID3D12DescriptorHeap_GetGPUDescriptorHandleForHeapStart);
             if (addr == IntPtr.Zero) return default;
 
-            var fn = Marshal.GetDelegateForFunctionPointer<GetGPUDescriptorHandleForHeapStartDelegate>(addr);
-            fn(heap, out ulong result);
-            return new D3D12GpuDescriptorHandle(result);
+            var del = Marshal.GetDelegateForFunctionPointer<GetGPUDescriptorHandleForHeapStartDelegate>(addr);
+            del(heap, out var handle);
+            return handle;
+        }
+
+        private static D3D12_DESCRIPTOR_HEAP_DESC GetDescriptorHeapDesc(IntPtr heap)
+        {
+            // GetDesc is at vtable index 8.
+            IntPtr addr = GetVTableFunctionAddress(heap, VTABLE_ID3D12DescriptorHeap_GetDesc);
+            if (addr == IntPtr.Zero) return default;
+
+            var fn = Marshal.GetDelegateForFunctionPointer<GetDescDelegate>(addr);
+            fn(out var desc, heap); // Hidden pointer ABI: hiddenPtr first.
+            return desc;
         }
 
         private static void CreateRenderTargetView(IntPtr device, IntPtr resource, IntPtr desc, nuint destDescriptor)

@@ -211,23 +211,31 @@ namespace PhantomRender.ImGui
                         }
                     }
 
-                    // Render with whichever renderer was initialized
-                    if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                    try
                     {
-                        _dx11Renderer.NewFrame();
-                        _dx11Renderer.Render(swapChain);
-                    }
+                        // Render with whichever renderer was initialized
+                        if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                        {
+                            _dx11Renderer.NewFrame();
+                            _dx11Renderer.Render(swapChain);
+                        }
 #if NET5_0_OR_GREATER
-                    else if (_dx12Renderer != null && _dx12Renderer.IsInitialized)
-                    {
-                        _dx12Renderer.NewFrame();
-                        _dx12Renderer.Render(swapChain);
-                    }
+                        else if (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+                        {
+                            _dx12Renderer.NewFrame();
+                            _dx12Renderer.Render(swapChain);
+                        }
 #endif
-                    else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+                        else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+                        {
+                            _dx10Renderer.NewFrame();
+                            _dx10Renderer.Render();
+                        }
+                    }
+                    catch (Exception ex)
                     {
-                        _dx10Renderer.NewFrame();
-                        _dx10Renderer.Render();
+                        Console.WriteLine($"[PhantomRender] DXGI OnPresent Lambda Error: {ex}");
+                        Console.Out.Flush();
                     }
                 };
                 
