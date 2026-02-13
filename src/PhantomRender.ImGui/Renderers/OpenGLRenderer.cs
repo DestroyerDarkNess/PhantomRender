@@ -84,12 +84,13 @@ namespace PhantomRender.ImGui.Renderers
 
             // Test window for testing
             Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(100, 100), ImGuiCond.FirstUseEver);
-            if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender OpenGL"))
+            bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender OpenGL");
+            if (showWindow)
             {
                 Hexa.NET.ImGui.ImGui.Text("Status: Active (OpenGL)");
                 Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-                Hexa.NET.ImGui.ImGui.End();
             }
+            Hexa.NET.ImGui.ImGui.End();
 
             // Demo window for testing
             Hexa.NET.ImGui.ImGui.ShowDemoWindow();

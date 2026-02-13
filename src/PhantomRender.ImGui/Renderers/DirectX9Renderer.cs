@@ -79,13 +79,14 @@ namespace PhantomRender.ImGui.Renderers
 
             // Test window at fixed position
             Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.FirstUseEver);
-            if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX9"))
+            bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX9");
+            if (showWindow)
             {
                 Hexa.NET.ImGui.ImGui.Text("Status: Active");
                 Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
                 Hexa.NET.ImGui.ImGui.Text($"Frames: {_frameCounter}");
-                Hexa.NET.ImGui.ImGui.End();
             }
+            Hexa.NET.ImGui.ImGui.End();
 
             // Demo window for testing
             Hexa.NET.ImGui.ImGui.ShowDemoWindow();

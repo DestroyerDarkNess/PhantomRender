@@ -156,12 +156,13 @@ namespace PhantomRender.ImGui.Renderers
                 _frameCounter++;
 
                 Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(50, 50), ImGuiCond.FirstUseEver);
-                if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX11"))
+                bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX11");
+                if (showWindow)
                 {
                     Hexa.NET.ImGui.ImGui.Text("Status: Active (DX11)");
                     Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-                    Hexa.NET.ImGui.ImGui.End();
                 }
+                Hexa.NET.ImGui.ImGui.End();
 
                 Hexa.NET.ImGui.ImGui.ShowDemoWindow();
 

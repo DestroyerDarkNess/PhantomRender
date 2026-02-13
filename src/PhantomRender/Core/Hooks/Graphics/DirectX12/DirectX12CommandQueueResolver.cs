@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using PhantomRender.Core.Memory;
 using PhantomRender.Core.Native;
 
@@ -13,10 +14,16 @@ namespace PhantomRender.Core.Hooks.Graphics
     /// </summary>
     public static unsafe class DirectX12CommandQueueResolver
     {
+        // IDXGISwapChain inherits IDXGIDeviceSubObject, which exposes GetDevice at vtable index 7.
+        // For DX12 swapchains, GetDevice can return an ID3D12CommandQueue when queried with IID_ID3D12CommandQueue.
+        // This is more robust than memory-offset scanning when it works, so we try it first.
+        private const int VTABLE_IDXGIDeviceSubObject_GetDevice = 7;
+
         private static readonly object _lock = new object();
         private static bool _initialized;
         private static bool _initFailed;
         private static nuint _commandQueueOffset;
+        private static int _loggedResolveMethod; // 0 = not logged, 1 = GetDevice, 2 = offset scan
 
         public static bool IsInitialized => _initialized && !_initFailed;
 
@@ -43,13 +50,60 @@ namespace PhantomRender.Core.Hooks.Graphics
             commandQueue = IntPtr.Zero;
 
             if (swapChain == IntPtr.Zero) return false;
-            if (!EnsureInitialized()) return false;
 
             try
             {
-                // Read the command queue pointer from the swapchain object at the discovered offset.
-                commandQueue = MemoryUtils.ReadIntPtr(swapChain + (int)_commandQueueOffset);
-                return commandQueue != IntPtr.Zero;
+                // 1) Prefer querying via swapchain->GetDevice(IID_ID3D12CommandQueue).
+                // This returns an owned reference (AddRef'ed) on success.
+                if (TryGetCommandQueueViaGetDevice(swapChain, out commandQueue))
+                {
+                    if (Interlocked.CompareExchange(ref _loggedResolveMethod, 1, 0) == 0)
+                    {
+                        Console.WriteLine("[PhantomRender] DX12: Command queue resolved via IDXGISwapChain::GetDevice(IID_ID3D12CommandQueue).");
+                        Console.Out.Flush();
+                    }
+                    return true;
+                }
+
+                // 2) Fallback: read the command queue pointer from the swapchain object at the discovered offset,
+                // then QueryInterface to validate + obtain an owned ID3D12CommandQueue reference.
+                if (!EnsureInitialized()) return false;
+
+                IntPtr candidate = MemoryUtils.ReadIntPtr(swapChain + (int)_commandQueueOffset);
+                if (candidate == IntPtr.Zero) return false;
+
+                Guid iid = Direct3D12.IID_ID3D12CommandQueue;
+                int hr = Marshal.QueryInterface(candidate, ref iid, out commandQueue);
+                if (hr >= 0 && commandQueue != IntPtr.Zero && Interlocked.CompareExchange(ref _loggedResolveMethod, 2, 0) == 0)
+                {
+                    Console.WriteLine($"[PhantomRender] DX12: Command queue resolved via swapchain offset scan (offset=0x{_commandQueueOffset:X}).");
+                    Console.Out.Flush();
+                }
+                return hr >= 0 && commandQueue != IntPtr.Zero;
+            }
+            catch
+            {
+                commandQueue = IntPtr.Zero;
+                return false;
+            }
+        }
+
+        private static bool TryGetCommandQueueViaGetDevice(IntPtr swapChain, out IntPtr commandQueue)
+        {
+            commandQueue = IntPtr.Zero;
+
+            try
+            {
+                IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain);
+                if (vTable == IntPtr.Zero) return false;
+
+                IntPtr getDeviceAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_IDXGIDeviceSubObject_GetDevice * IntPtr.Size);
+                if (getDeviceAddr == IntPtr.Zero) return false;
+
+                var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
+                Guid iid = Direct3D12.IID_ID3D12CommandQueue;
+                int hr = getDevice(swapChain, ref iid, out commandQueue);
+                return hr >= 0 && commandQueue != IntPtr.Zero;
             }
             catch
             {
@@ -194,6 +248,8 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CreateSwapChainDelegate(IntPtr factory, IntPtr device, ref DXGI.DXGI_SWAP_CHAIN_DESC desc, out IntPtr ppSwapChain);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int GetDeviceDelegate(IntPtr swapChain, ref Guid riid, out IntPtr ppDevice);
     }
 }
-

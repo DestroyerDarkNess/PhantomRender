@@ -1,6 +1,8 @@
 #if NET5_0_OR_GREATER
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D12;
 using Hexa.NET.ImGui.Backends.Win32;
@@ -11,6 +13,8 @@ namespace PhantomRender.ImGui.Renderers
 {
     public sealed unsafe class DirectX12Renderer : RendererBase
     {
+        private const int SRV_HEAP_CAPACITY = 2048;
+
         // IDXGISwapChain vtable indices.
         private const int VTABLE_IUnknown_QueryInterface = 0;
         private const int VTABLE_IDXGISwapChain_GetBuffer = 9;
@@ -224,6 +228,62 @@ namespace PhantomRender.ImGui.Renderers
             public ulong LegacySingleSrvGpuDescriptor;
         }
 
+        // Simple SRV descriptor allocator used by the DX12 backend (when it requires callbacks).
+        // We also keep legacy handles for older backends; both can coexist safely.
+        private static int _srvAllocatorReady;
+        private static nuint _srvAllocCpuStart;
+        private static ulong _srvAllocGpuStart;
+        private static uint _srvAllocDescriptorSize;
+        private static int _srvAllocNextIndex;
+        private static int _srvAllocLoggedOutOfSpace;
+
+        private static void ConfigureSrvAllocator(D3D12CpuDescriptorHandle cpuStart, D3D12GpuDescriptorHandle gpuStart, uint descriptorSize, uint startIndex)
+        {
+            _srvAllocCpuStart = cpuStart.Ptr;
+            _srvAllocGpuStart = gpuStart.Ptr;
+            _srvAllocDescriptorSize = descriptorSize;
+            _srvAllocNextIndex = unchecked((int)startIndex);
+            Volatile.Write(ref _srvAllocatorReady, 1);
+            Volatile.Write(ref _srvAllocLoggedOutOfSpace, 0);
+        }
+
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+        private static void SrvDescriptorAlloc(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle* outCpuDesc, D3D12GpuDescriptorHandle* outGpuDesc)
+        {
+            if (outCpuDesc == null || outGpuDesc == null)
+                return;
+
+            if (Volatile.Read(ref _srvAllocatorReady) == 0 || _srvAllocDescriptorSize == 0)
+            {
+                outCpuDesc->Ptr = 0;
+                outGpuDesc->Ptr = 0;
+                return;
+            }
+
+            int idx = Interlocked.Increment(ref _srvAllocNextIndex) - 1;
+            if ((uint)idx >= SRV_HEAP_CAPACITY)
+            {
+                // Avoid returning garbage handles. Reuse descriptor 0 as a last resort.
+                if (Interlocked.CompareExchange(ref _srvAllocLoggedOutOfSpace, 1, 0) == 0)
+                {
+                    Console.WriteLine("[PhantomRender] DX12: SRV descriptor heap is exhausted; reusing descriptor 0.");
+                    Console.Out.Flush();
+                }
+
+                idx = 0;
+            }
+
+            ulong offset = (ulong)idx * _srvAllocDescriptorSize;
+            outCpuDesc->Ptr = _srvAllocCpuStart + (nuint)offset;
+            outGpuDesc->Ptr = _srvAllocGpuStart + offset;
+        }
+
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+        private static void SrvDescriptorFree(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle cpuDesc, D3D12GpuDescriptorHandle gpuDesc)
+        {
+            // No-op (linear allocator). Heap is released on shutdown.
+        }
+
         [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_Init")]
         private static extern bool CImGui_ImplDX12_Init_Manual(ImGui_ImplDX12_InitInfo_Fixed* info);
 
@@ -364,15 +424,18 @@ namespace PhantomRender.ImGui.Renderers
                 try
                 {
                     Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+                    ImGuiImplWin32.SetCurrentContext(Context);
+                    ImGuiImplD3D12.SetCurrentContext(Context);
                     _frameCounter++;
 
                     Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(50, 50), ImGuiCond.FirstUseEver);
-                    if (Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX12"))
+                    bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX12");
+                    if (showWindow)
                     {
                         Hexa.NET.ImGui.ImGui.Text("Status: Active (DX12)");
                         Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-                        Hexa.NET.ImGui.ImGui.End();
                     }
+                    Hexa.NET.ImGui.ImGui.End();
 
                     Hexa.NET.ImGui.ImGui.ShowDemoWindow();
 
@@ -565,6 +628,13 @@ namespace PhantomRender.ImGui.Renderers
 
             _fenceValue = 0;
             _frameStarted = false;
+
+            // Ensure allocator callbacks don't hand out stale handles after heap release.
+            Volatile.Write(ref _srvAllocatorReady, 0);
+            _srvAllocCpuStart = 0;
+            _srvAllocGpuStart = 0;
+            _srvAllocDescriptorSize = 0;
+            _srvAllocNextIndex = 0;
         }
 
         private bool EnsureDx12Ready(IntPtr swapChain)
@@ -587,8 +657,12 @@ namespace PhantomRender.ImGui.Renderers
                     ShutdownImGuiDx12();
                     Marshal.Release(_commandQueue);
                     _commandQueue = newQueue;
-                    Marshal.AddRef(_commandQueue);
                     _imguiDx12Initialized = false;
+                }
+                else
+                {
+                    // Resolver returns an owned reference; release it when the queue hasn't changed.
+                    Marshal.Release(newQueue);
                 }
             }
             else
@@ -606,7 +680,6 @@ namespace PhantomRender.ImGui.Renderers
                 }
 
                 _commandQueue = queue;
-                Marshal.AddRef(_commandQueue);
 
                 Console.WriteLine($"[PhantomRender] DX12: Command queue resolved: {_commandQueue.ToString("X")}");
                 Console.Out.Flush();
@@ -797,10 +870,14 @@ namespace PhantomRender.ImGui.Renderers
                 // For now, we proceed, but it is suspicious.
             }
 
-            // Avoid passing a 0 GPU handle into ImGui init in case the backend treats it as "null".
-            const uint legacySrvIndex = 1;
+            // Prefer descriptor 0 for the legacy font SRV. If the GPU start handle is 0 (suspicious),
+            // use descriptor 1 so the resulting GPU handle isn't 0.
+            uint legacySrvIndex = _srvGpuStart.Ptr == 0 ? 1u : 0u;
             _imguiSrvCpu = new D3D12CpuDescriptorHandle(_srvCpuStart.Ptr + (nuint)(legacySrvIndex * _srvDescriptorSize));
             _imguiSrvGpu = new D3D12GpuDescriptorHandle(_srvGpuStart.Ptr + (ulong)(legacySrvIndex * _srvDescriptorSize));
+
+            // Configure allocator callbacks used by newer ImGui DX12 backends.
+            ConfigureSrvAllocator(_srvCpuStart, _srvGpuStart, _srvDescriptorSize, legacySrvIndex);
 
             Console.WriteLine($"[PhantomRender] DX12 Init: SRV heap CPU start=0x{_srvCpuStart.Ptr:X}, GPU start=0x{_srvGpuStart.Ptr:X}, Inc={_srvDescriptorSize}");
             Console.WriteLine($"[PhantomRender] DX12 Init: ImGui legacy SRV CPU=0x{_imguiSrvCpu.Ptr:X}, GPU=0x{_imguiSrvGpu.Ptr:X}");
@@ -916,8 +993,10 @@ namespace PhantomRender.ImGui.Renderers
                 info.DSVFormat = 0;
                 info.UserData = IntPtr.Zero;
                 info.SrvDescriptorHeap = _srvHeap;
-                info.SrvDescriptorAllocFn = IntPtr.Zero;
-                info.SrvDescriptorFreeFn = IntPtr.Zero;
+
+                info.SrvDescriptorAllocFn = (IntPtr)(delegate* unmanaged[Cdecl]<ImGui_ImplDX12_InitInfo_Fixed*, D3D12CpuDescriptorHandle*, D3D12GpuDescriptorHandle*, void>)&SrvDescriptorAlloc;
+                info.SrvDescriptorFreeFn = (IntPtr)(delegate* unmanaged[Cdecl]<ImGui_ImplDX12_InitInfo_Fixed*, D3D12CpuDescriptorHandle, D3D12GpuDescriptorHandle, void>)&SrvDescriptorFree;
+
                 info.LegacySingleSrvCpuDescriptor = _imguiSrvCpu.Ptr;
                 info.LegacySingleSrvGpuDescriptor = _imguiSrvGpu.Ptr;
 
@@ -931,9 +1010,24 @@ namespace PhantomRender.ImGui.Renderers
                     return false;
                 }
 
+                // Force creation of device objects (font texture/pipeline state) early.
+                // If this fails, later RenderDrawData may crash in native code.
+                bool created = false;
+                try { created = ImGuiImplD3D12.CreateDeviceObjects(); } catch { created = false; }
+                Console.WriteLine($"[PhantomRender] DX12: ImGuiImplD3D12.CreateDeviceObjects()={(created ? "OK" : "FAILED")}");
+                Console.Out.Flush();
+
+                if (!created)
+                {
+                    try { ImGuiImplD3D12.Shutdown(); } catch { }
+                    _imguiDx12Initialized = false;
+                    return false;
+                }
+
                 _imguiDx12Initialized = true;
                 Console.WriteLine("[PhantomRender] DirectX12Renderer: DX12 backend initialized.");
                 Console.Out.Flush();
+
                 return true;
             }
             catch (Exception ex)
@@ -951,6 +1045,11 @@ namespace PhantomRender.ImGui.Renderers
                 if (_frameCounter <= 5) { Console.WriteLine("[PhantomRender] DX12 RenderDrawData: skipped (null queue/list/frames)"); Console.Out.Flush(); }
                 return;
             }
+
+            // Ensure the DX12 backend sees the correct ImGui context before touching draw lists.
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+            ImGuiImplWin32.SetCurrentContext(Context);
+            ImGuiImplD3D12.SetCurrentContext(Context);
 
             uint frameIndex = GetCurrentBackBufferIndex(_swapChain3);
             if (frameIndex >= _frames.Length)
@@ -1042,6 +1141,12 @@ namespace PhantomRender.ImGui.Renderers
                     Console.WriteLine("[PhantomRender] DX12 RenderDrawData: DrawData Handle is NULL!");
                     Console.Out.Flush();
                     return;
+                }
+
+                if (_frameCounter <= 5)
+                {
+                    Console.WriteLine($"[PhantomRender] DX12: Calling CImGui_ImplDX12_RenderDrawData (drawData=0x{(nuint)drawData.Handle:X}, cmdList=0x{_commandList.ToString("X")})");
+                    Console.Out.Flush();
                 }
 
                 // Using manual P/Invoke to ensure correct entry point and ABI.
