@@ -46,6 +46,10 @@ namespace PhantomRender.ImGui.Native
             try
             {
                 AllocConsole();
+
+                // Mirror all console output into a per-game log file (e.g. "witcher3.log")
+                // so we still have the trace when the game exits/crashes.
+                ConsoleFileLog.Install(_hModule);
                 
                 Console.WriteLine("[PhantomRender] Console Allocated!");
                 
