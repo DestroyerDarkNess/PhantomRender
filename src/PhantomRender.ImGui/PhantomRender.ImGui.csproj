@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFrameworks>net461;net9.0</TargetFrameworks>
+    <TargetFrameworks>net48;net9.0</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
@@ -16,5 +16,30 @@
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
     <PackageReference Include="HexaGen.Runtime" Version="1.1.24" />
   </ItemGroup>
+
+  <!--
+    .NET Framework + netstandard dependencies can pull both System.Numerics and System.Numerics.Vectors.
+    Depending on the selected asset, Vector2/Vector3 may be type-forwarded between these assemblies which
+    can lead to either:
+      - CS0433 (duplicate type), or
+      - CS1069 (type forwarded to an assembly that's not referenced in the global alias).
+
+    For net48, System.Numerics must stay in the global alias. We instead move System.Numerics.Vectors out
+    of the global alias to avoid duplicate type resolution while still satisfying dependency references.
+  -->
+  <Target Name="AliasSystemNumericsVectorsForNet48"
+          AfterTargets="ResolveReferences"
+          Condition="'$(TargetFramework)' == 'net48'">
+    <ItemGroup>
+      <ReferencePathWithRefAssemblies Update="@(ReferencePathWithRefAssemblies)"
+                                      Condition="'%(ReferencePathWithRefAssemblies.FileName)%(ReferencePathWithRefAssemblies.Extension)' == 'System.Numerics.Vectors.dll'">
+        <Aliases>vectors</Aliases>
+      </ReferencePathWithRefAssemblies>
+      <ReferencePath Update="@(ReferencePath)"
+                     Condition="'%(ReferencePath.FileName)%(ReferencePath.Extension)' == 'System.Numerics.Vectors.dll'">
+        <Aliases>vectors</Aliases>
+      </ReferencePath>
+    </ItemGroup>
+  </Target>
 
 </Project>
