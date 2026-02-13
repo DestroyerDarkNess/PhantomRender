@@ -104,6 +104,26 @@ namespace PhantomRender.ImGui.Renderers
             public D3D12_RESOURCE_BARRIER_UNION Union;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3D12_VIEWPORT
+        {
+            public float TopLeftX;
+            public float TopLeftY;
+            public float Width;
+            public float Height;
+            public float MinDepth;
+            public float MaxDepth;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3D12_RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int QueryInterfaceDelegate(IntPtr thisPtr, ref Guid riid, out IntPtr ppvObject);
 
@@ -143,6 +163,15 @@ namespace PhantomRender.ImGui.Renderers
         // The vtable entry signature is: void(this, D3D12_GPU_DESCRIPTOR_HANDLE* pResult)
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void GetGPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out ulong result);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate void RSSetViewportsDelegate(IntPtr commandList, uint numViewports, D3D12_VIEWPORT* pViewports);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate void RSSetScissorRectsDelegate(IntPtr commandList, uint numRects, D3D12_RECT* pRects);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate void ClearRenderTargetViewDelegate(IntPtr commandList, nuint rtvHandle, float* colorRGBA, uint numRects, D3D12_RECT* pRects);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CommandAllocatorResetDelegate(IntPtr allocator);
@@ -194,6 +223,8 @@ namespace PhantomRender.ImGui.Renderers
         private IntPtr _swapChain3;
         private uint _bufferCount;
         private int _rtvFormat;
+        private int _width;
+        private int _height;
 
         private IntPtr _rtvHeap;
         private IntPtr _srvHeap;
@@ -454,6 +485,8 @@ namespace PhantomRender.ImGui.Renderers
 
             _frames = null;
             _bufferCount = 0;
+            _width = 0;
+            _height = 0;
             _rtvFormat = 0;
             _rtvDescriptorSize = 0;
             _rtvCpuStart = default;
@@ -574,6 +607,8 @@ namespace PhantomRender.ImGui.Renderers
 
             _bufferCount = desc.BufferCount;
             _rtvFormat = desc.BufferDesc.Format;
+            _width = (int)desc.BufferDesc.Width;
+            _height = (int)desc.BufferDesc.Height;
 
             if (_bufferCount == 0)
             {
@@ -893,13 +928,50 @@ namespace PhantomRender.ImGui.Renderers
             IntPtr srvHeap = _srvHeap;
             GraphicsCommandListSetDescriptorHeaps(_commandList, 1, &srvHeap);
 
+            // Viewport & Scissor
+            // Viewport is critical after Reset()
+            var viewport = new D3D12_VIEWPORT
+            {
+                TopLeftX = 0,
+                TopLeftY = 0,
+                Width = (float)_width,
+                Height = (float)_height,
+                MinDepth = 0.0f,
+                MaxDepth = 1.0f
+            };
+            
+            var rect = new D3D12_RECT
+            {
+                left = 0,
+                top = 0,
+                right = _width,
+                bottom = _height
+            };
+
+            GraphicsCommandListRSSetViewports(_commandList, 1, &viewport);
+            GraphicsCommandListRSSetScissorRects(_commandList, 1, &rect);
+
             if (_frameCounter <= 5)
             {
-                Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frameIdx={frameIndex}, RT=0x{frame.RenderTarget:X}, RTV=0x{rtvPtr:X}, srvHeap=0x{srvHeap:X}");
+                Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frameIdx={frameIndex}, RT=0x{frame.RenderTarget:X}, RTV=0x{rtvPtr:X}, srvHeap=0x{srvHeap:X}, Res={_width}x{_height}");
                 Console.Out.Flush();
             }
 
-            ImGuiImplD3D12.RenderDrawData(drawData, (ID3D12GraphicsCommandList*)_commandList);
+            try
+            {
+                // ISOLATION TEST: Disable ImGui render and use ClearRenderTargetView (Green)
+                // If this works without crashing, base DX12 setup is good.
+                
+                // ImGuiImplD3D12.RenderDrawData(drawData, (ID3D12GraphicsCommandList*)_commandList);
+                
+                float* greenColor = stackalloc float[4] { 0.0f, 1.0f, 0.0f, 1.0f };
+                GraphicsCommandListClearRenderTargetView(_commandList, rtvPtr, greenColor, 0, null);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX12: RenderDrawData EXCEPTION: {ex}");
+                Console.Out.Flush();
+            }
 
             // Transition back to PRESENT
             barrier.Union.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
@@ -1138,6 +1210,60 @@ namespace PhantomRender.ImGui.Renderers
 
             var fn = Marshal.GetDelegateForFunctionPointer<CommandQueueExecuteCommandListsDelegate>(addr);
             fn(queue, numCommandLists, ppCommandLists);
+        }
+
+        private static void GraphicsCommandListRSSetViewports(IntPtr commandList, uint numViewports, D3D12_VIEWPORT* pViewports)
+        {
+            // RSSetViewports is at index 21 (ID3D12GraphicsCommandList)
+            // 0-2: IUnknown
+            // 3-6: ID3D12Object
+            // 7: ID3D12DeviceChild
+            // 8:  (Inherited ID3D12CommandList::GetType)
+            // 9:  Close (id3d12commandlist) ?? No, ID3D12CommandList has GetType.
+            //     Wait. ID3D12GraphicsCommandList : ID3D12CommandList.
+            //     ID3D12CommandList : ID3D12DeviceChild.
+            //     ID3D12DeviceChild : ID3D12Object.
+            //     ID3D12Object : IUnknown.
+            //
+            //     IUnknown: 3 methods (0-2)
+            //     ID3D12Object: 4 methods (3-6)
+            //     ID3D12DeviceChild: 1 method (GetDevice, 7)
+            //     ID3D12CommandList: 1 method (GetType, 8)
+            //     ID3D12GraphicsCommandList starts at 9.
+            //     9: Close
+            //     10: Reset
+            //     ...
+            //     21: RSSetViewports
+            //     22: RSSetScissorRects
+            
+            IntPtr addr = GetVTableFunctionAddress(commandList, 21);
+            if (addr == IntPtr.Zero) return;
+
+            var fn = Marshal.GetDelegateForFunctionPointer<RSSetViewportsDelegate>(addr);
+            fn(commandList, numViewports, pViewports);
+        }
+
+        private static void GraphicsCommandListRSSetScissorRects(IntPtr commandList, uint numRects, D3D12_RECT* pRects)
+        {
+            // RSSetScissorRects is at index 22
+            IntPtr addr = GetVTableFunctionAddress(commandList, 22);
+            if (addr == IntPtr.Zero) return;
+
+            var fn = Marshal.GetDelegateForFunctionPointer<RSSetScissorRectsDelegate>(addr);
+            fn(commandList, numRects, pRects);
+        }
+
+        private static void GraphicsCommandListClearRenderTargetView(IntPtr commandList, nuint rtvHandle, float* colorRGBA, uint numRects, D3D12_RECT* pRects)
+        {
+            // ClearRenderTargetView is at index 48 (ID3D12GraphicsCommandList)
+            // OMSetRenderTargets=46
+            // ClearDepthStencilView=47
+            // ClearRenderTargetView=48
+            IntPtr addr = GetVTableFunctionAddress(commandList, 48);
+            if (addr == IntPtr.Zero) return;
+
+            var fn = Marshal.GetDelegateForFunctionPointer<ClearRenderTargetViewDelegate>(addr);
+            fn(commandList, rtvHandle, colorRGBA, numRects, pRects);
         }
 
         private static int CommandQueueSignal(IntPtr queue, IntPtr fence, ulong value)
