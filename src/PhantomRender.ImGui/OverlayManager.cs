@@ -99,6 +99,9 @@ namespace PhantomRender.ImGui
 
         private static object _dxgiLock = new object();
         private static DirectX11Renderer _dx11Renderer;
+#if NET5_0_OR_GREATER
+        private static DirectX12Renderer _dx12Renderer;
+#endif
 
         /// <summary>
         /// Unified DXGI initialization.
@@ -115,11 +118,39 @@ namespace PhantomRender.ImGui
                 _dx10Hook = new DirectX10Hook(swapChainAddr);
                 // Don't create renderers yet — we'll detect which one is needed
 
+                _dx10Hook.OnBeforeResizeBuffers += (swapChain, bufferCount, width, height, newFormat, swapChainFlags) =>
+                {
+                    lock (_dxgiLock)
+                    {
+                        try { _dx11Renderer?.OnLostDevice(); } catch { }
+                        try { _dx10Renderer?.OnLostDevice(); } catch { }
+#if NET5_0_OR_GREATER
+                        try { _dx12Renderer?.OnBeforeResizeBuffers(swapChain); } catch { }
+#endif
+                    }
+                };
+
+                _dx10Hook.OnAfterResizeBuffers += (swapChain, bufferCount, width, height, newFormat, swapChainFlags, hr) =>
+                {
+                    lock (_dxgiLock)
+                    {
+                        try { _dx11Renderer?.OnResetDevice(); } catch { }
+                        try { _dx10Renderer?.OnResetDevice(); } catch { }
+#if NET5_0_OR_GREATER
+                        try { _dx12Renderer?.OnAfterResizeBuffers(swapChain); } catch { }
+#endif
+                    }
+                };
+
                 _dx10Hook.OnPresent += (swapChain, syncInterval, flags) =>
                 {
                     // Check if either renderer is already initialized
                     bool hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
-                                    || (_dx10Renderer != null && _dx10Renderer.IsInitialized);
+                                    || (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+#if NET5_0_OR_GREATER
+                                    || (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+#endif
+                                    ;
 
                     if (!hasRenderer)
                     {
@@ -127,7 +158,11 @@ namespace PhantomRender.ImGui
                         {
                             // Double-check after acquiring lock
                             hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
-                                       || (_dx10Renderer != null && _dx10Renderer.IsInitialized);
+                                       || (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+#if NET5_0_OR_GREATER
+                                       || (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+#endif
+                                       ;
                             if (!hasRenderer)
                             {
                                 Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
@@ -144,18 +179,32 @@ namespace PhantomRender.ImGui
                                 }
                                 else
                                 {
-                                    // 2. Fall back to DX10
-                                    IntPtr dx10Device = _dx10Hook.GetDevice(swapChain);
-                                    if (dx10Device != IntPtr.Zero)
+#if NET5_0_OR_GREATER
+                                    // 2. Try DX12
+                                    IntPtr dx12Device = _dx10Hook.GetDeviceAs12(swapChain);
+                                    if (dx12Device != IntPtr.Zero)
                                     {
-                                        Console.WriteLine($"[PhantomRender] DXGI: Detected DX10 device: {dx10Device}. Window: {hWnd}");
-                                        _dx10Renderer = new DirectX10Renderer();
-                                        _dx10Renderer.Initialize(dx10Device, hWnd);
-                                        Marshal.Release(dx10Device); // Release extra ref from GetDevice
+                                        Console.WriteLine($"[PhantomRender] DXGI: Detected DX12 device: {dx12Device}. Window: {hWnd}");
+                                        _dx12Renderer = new DirectX12Renderer();
+                                        _dx12Renderer.Initialize(dx12Device, hWnd);
+                                        Marshal.Release(dx12Device); // Release extra ref from GetDeviceAs12
                                     }
                                     else
+#endif
                                     {
-                                        Console.WriteLine("[PhantomRender] DXGI: Could NOT detect any device from SwapChain!");
+                                        // 3. Fall back to DX10
+                                        IntPtr dx10Device = _dx10Hook.GetDevice(swapChain);
+                                        if (dx10Device != IntPtr.Zero)
+                                        {
+                                            Console.WriteLine($"[PhantomRender] DXGI: Detected DX10 device: {dx10Device}. Window: {hWnd}");
+                                            _dx10Renderer = new DirectX10Renderer();
+                                            _dx10Renderer.Initialize(dx10Device, hWnd);
+                                            Marshal.Release(dx10Device); // Release extra ref from GetDevice
+                                        }
+                                        else
+                                        {
+                                            Console.WriteLine("[PhantomRender] DXGI: Could NOT detect any device from SwapChain!");
+                                        }
                                     }
                                 }
                             }
@@ -168,6 +217,13 @@ namespace PhantomRender.ImGui
                         _dx11Renderer.NewFrame();
                         _dx11Renderer.Render(swapChain);
                     }
+#if NET5_0_OR_GREATER
+                    else if (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+                    {
+                        _dx12Renderer.NewFrame();
+                        _dx12Renderer.Render(swapChain);
+                    }
+#endif
                     else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
                     {
                         _dx10Renderer.NewFrame();
@@ -176,7 +232,7 @@ namespace PhantomRender.ImGui
                 };
                 
                 _dx10Hook.Enable();
-                Console.WriteLine("[PhantomRender] DXGI Present Hook Enabled (auto-detects DX10/DX11).");
+                Console.WriteLine("[PhantomRender] DXGI Present Hook Enabled (auto-detects DX10/DX11/DX12).");
             }
         }
 

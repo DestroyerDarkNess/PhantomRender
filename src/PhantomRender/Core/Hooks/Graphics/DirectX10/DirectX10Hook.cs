@@ -12,14 +12,21 @@ namespace PhantomRender.Core.Hooks.Graphics
         private const int VTABLE_GetDevice = 7;
         private const int VTABLE_Present = 8;
         private const int VTABLE_GetDesc = 12;
-        
+        private const int VTABLE_ResizeBuffers = 13;
+         
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        public delegate int ResizeBuffersDelegate(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags);
+
         public event Action<IntPtr, uint, uint> OnPresent;
+        public event Action<IntPtr, uint, uint, uint, int, uint> OnBeforeResizeBuffers;
+        public event Action<IntPtr, uint, uint, uint, int, uint, int> OnAfterResizeBuffers;
 
         private HookEngine _hookEngine;
         private PresentDelegate _originalPresent;
+        private ResizeBuffersDelegate _originalResizeBuffers;
 
         public DirectX10Hook(IntPtr swapChainAddress)
         {
@@ -28,8 +35,10 @@ namespace PhantomRender.Core.Hooks.Graphics
             // Read VTable from swapChain instance
             IntPtr vTable = MemoryUtils.ReadIntPtr(swapChainAddress);
             IntPtr presentAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_Present * IntPtr.Size);
+            IntPtr resizeBuffersAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_ResizeBuffers * IntPtr.Size);
 
             _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddr, new PresentDelegate(PresentHook));
+            _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddr, new ResizeBuffersDelegate(ResizeBuffersHook));
         }
 
         public void Enable()
@@ -54,6 +63,31 @@ namespace PhantomRender.Core.Hooks.Graphics
                 Console.WriteLine($"[PhantomRender] DX10 Present error: {ex.Message}");
             }
             return _originalPresent(swapChain, syncInterval, flags);
+        }
+
+        private int ResizeBuffersHook(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
+        {
+            try
+            {
+                OnBeforeResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DXGI Before ResizeBuffers error: {ex.Message}");
+            }
+
+            int hr = _originalResizeBuffers(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
+
+            try
+            {
+                OnAfterResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags, hr);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DXGI After ResizeBuffers error: {ex.Message}");
+            }
+
+            return hr;
         }
 
         public void Dispose()
@@ -96,6 +130,29 @@ namespace PhantomRender.Core.Hooks.Graphics
             var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
 
             Guid iid = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140"); // IID_ID3D11Device
+            IntPtr device;
+            if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
+            {
+                return device;
+            }
+
+            return IntPtr.Zero;
+        }
+
+        /// <summary>
+        /// Tries to get the device as ID3D12Device from the swapchain.
+        /// Returns IntPtr.Zero if the device is not DX12 (or not exposed via GetDevice).
+        /// </summary>
+        public unsafe IntPtr GetDeviceAs12(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero) return IntPtr.Zero;
+
+            IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain);
+            IntPtr getDeviceAddr = MemoryUtils.ReadIntPtr(vTable + VTABLE_GetDevice * IntPtr.Size);
+
+            var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
+
+            Guid iid = Direct3D12.IID_ID3D12Device;
             IntPtr device;
             if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
             {
