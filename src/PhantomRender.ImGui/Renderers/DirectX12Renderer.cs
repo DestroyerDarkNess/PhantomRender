@@ -196,6 +196,9 @@ namespace PhantomRender.ImGui.Renderers
         private D3D12CpuDescriptorHandle _rtvCpuStart;
         private D3D12CpuDescriptorHandle _srvCpuStart;
         private D3D12GpuDescriptorHandle _srvGpuStart;
+        private D3D12CpuDescriptorHandle _imguiSrvCpu;
+        private D3D12GpuDescriptorHandle _imguiSrvGpu;
+        private uint _srvDescriptorSize;
         private uint _rtvDescriptorSize;
 
         private FrameContext[] _frames;
@@ -639,7 +642,7 @@ namespace PhantomRender.ImGui.Renderers
             var srvHeapDesc = new D3D12_DESCRIPTOR_HEAP_DESC
             {
                 Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-                NumDescriptors = 64,
+                NumDescriptors = 2048,
                 Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
                 NodeMask = 0
             };
@@ -654,6 +657,14 @@ namespace PhantomRender.ImGui.Renderers
             _srvCpuStart = GetCPUDescriptorHandleForHeapStart(_srvHeap);
             _srvGpuStart = GetGPUDescriptorHandleForHeapStart(_srvHeap);
 
+            _srvDescriptorSize = GetDescriptorHandleIncrementSize(_device, D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+            if (_srvDescriptorSize == 0)
+            {
+                Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV descriptor increment size is 0.");
+                Console.Out.Flush();
+                return false;
+            }
+
             if (_srvCpuStart.Ptr == 0)
             {
                 Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap CPU start is 0.");
@@ -663,10 +674,23 @@ namespace PhantomRender.ImGui.Renderers
 
             if (_srvGpuStart.Ptr == 0)
             {
-                Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap GPU start is 0 (heap not shader-visible?).");
+                // Some drivers can legitimately return 0 for the start handle; don't treat this as fatal.
+                Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap GPU start is 0 (continuing).");
                 Console.Out.Flush();
-                return false;
             }
+
+            // Avoid passing a 0 GPU handle into ImGui init in case the backend treats it as "null".
+            // We reserve descriptor slot 0 and use slot 1 for the legacy font SRV.
+            const uint legacySrvIndex = 1;
+            _imguiSrvCpu = new D3D12CpuDescriptorHandle(_srvCpuStart.Ptr + (nuint)(legacySrvIndex * _srvDescriptorSize));
+            _imguiSrvGpu = new D3D12GpuDescriptorHandle(_srvGpuStart.Ptr + (ulong)(legacySrvIndex * _srvDescriptorSize));
+
+            Console.WriteLine($"[PhantomRender] DX12 Init: SRV heap CPU start=0x{_srvCpuStart.Ptr:X}, GPU start=0x{_srvGpuStart.Ptr:X}, Inc={_srvDescriptorSize}");
+            Console.WriteLine($"[PhantomRender] DX12 Init: ImGui legacy SRV CPU=0x{_imguiSrvCpu.Ptr:X}, GPU=0x{_imguiSrvGpu.Ptr:X}");
+            Console.Out.Flush();
+
+            Console.WriteLine($"[PhantomRender] DX12 Init: Creating backbuffer RTVs... Buffers={_bufferCount}");
+            Console.Out.Flush();
 
             // Create RTVs + store backbuffers
             _frames = new FrameContext[_bufferCount];
@@ -674,6 +698,9 @@ namespace PhantomRender.ImGui.Renderers
             uint inc = _rtvDescriptorSize;
             for (uint i = 0; i < _bufferCount; i++)
             {
+                Console.WriteLine($"[PhantomRender] DX12 Init: GetBuffer({i})...");
+                Console.Out.Flush();
+
                 Guid iidResource = IID_ID3D12Resource;
                 if (GetBuffer(swapChain, i, ref iidResource, out var resource) < 0 || resource == IntPtr.Zero)
                 {
@@ -682,8 +709,14 @@ namespace PhantomRender.ImGui.Renderers
                     return false;
                 }
 
+                Console.WriteLine($"[PhantomRender] DX12 Init: Backbuffer {i} resource={resource}");
+                Console.Out.Flush();
+
                 var rtvHandle = new D3D12CpuDescriptorHandle(_rtvCpuStart.Ptr + (nuint)(i * inc));
                 CreateRenderTargetView(_device, resource, IntPtr.Zero, rtvHandle);
+
+                Console.WriteLine($"[PhantomRender] DX12 Init: RTV {i} created at 0x{rtvHandle.Ptr:X}");
+                Console.Out.Flush();
 
                 _frames[i] = new FrameContext
                 {
@@ -768,8 +801,8 @@ namespace PhantomRender.ImGui.Renderers
                 info.SrvDescriptorHeap = (ID3D12DescriptorHeap*)_srvHeap;
                 info.SrvDescriptorAllocFn = null;
                 info.SrvDescriptorFreeFn = null;
-                info.LegacySingleSrvCpuDescriptor = _srvCpuStart;
-                info.LegacySingleSrvGpuDescriptor = _srvGpuStart;
+                info.LegacySingleSrvCpuDescriptor = _imguiSrvCpu;
+                info.LegacySingleSrvGpuDescriptor = _imguiSrvGpu;
 
                 if (!ImGuiImplD3D12.Init(ref info))
                 {
