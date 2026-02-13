@@ -67,6 +67,7 @@ namespace PhantomRender.ImGui.Renderers
         private const int D3D12_RESOURCE_BARRIER_FLAG_NONE = 0;
         private const uint D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES = 0xffffffff;
 
+        private const int D3D12_RESOURCE_STATE_COMMON = 0;
         private const int D3D12_RESOURCE_STATE_PRESENT = 0;
         private const int D3D12_RESOURCE_STATE_RENDER_TARGET = 0x4;
 
@@ -103,6 +104,7 @@ namespace PhantomRender.ImGui.Renderers
             public int Type;
             public int Flags;
             public D3D12_RESOURCE_BARRIER_UNION Union;
+            private int _pad; // Enforce 32-byte size on x64
         }
 
         [StructLayout(LayoutKind.Sequential)]
@@ -569,7 +571,27 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (_device == IntPtr.Zero) return false;
 
-            if (_commandQueue == IntPtr.Zero)
+            if (_commandQueue != IntPtr.Zero)
+            {
+                if (!DirectX12CommandQueueResolver.TryGetCommandQueueFromSwapChain(swapChain, out var newQueue) || newQueue == IntPtr.Zero)
+                {
+                    // Keep existing queue if possible, but log if we detect a mismatch
+                    return true; 
+                }
+
+                if (newQueue != _commandQueue)
+                {
+                    Console.WriteLine($"[PhantomRender] DX12: Command queue CHANGED! Old: {_commandQueue.ToString("X")}, New: {newQueue.ToString("X")}. Re-initializing ImGui...");
+                    Console.Out.Flush();
+
+                    ShutdownImGuiDx12();
+                    Marshal.Release(_commandQueue);
+                    _commandQueue = newQueue;
+                    Marshal.AddRef(_commandQueue);
+                    _imguiDx12Initialized = false;
+                }
+            }
+            else
             {
                 if (!DirectX12CommandQueueResolver.TryGetCommandQueueFromSwapChain(swapChain, out var queue) || queue == IntPtr.Zero)
                 {
@@ -586,7 +608,7 @@ namespace PhantomRender.ImGui.Renderers
                 _commandQueue = queue;
                 Marshal.AddRef(_commandQueue);
 
-                Console.WriteLine($"[PhantomRender] DX12: Command queue resolved: {_commandQueue}");
+                Console.WriteLine($"[PhantomRender] DX12: Command queue resolved: {_commandQueue.ToString("X")}");
                 Console.Out.Flush();
             }
 
@@ -966,7 +988,7 @@ namespace PhantomRender.ImGui.Renderers
                     {
                         pResource = frame.RenderTarget,
                         Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        StateBefore = D3D12_RESOURCE_STATE_PRESENT,
+                        StateBefore = D3D12_RESOURCE_STATE_COMMON, // More robust transition for OnPresent
                         StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET
                     }
                 }
@@ -1031,9 +1053,9 @@ namespace PhantomRender.ImGui.Renderers
                 Console.Out.Flush();
             }
 
-            // Transition back to PRESENT
+            // Transition back to COMMON (equivalent to PRESENT for swapchain buffers)
             barrier.Union.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barrier.Union.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+            barrier.Union.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
             GraphicsCommandListResourceBarrier(_commandList, 1, &barrier);
 
             hr = GraphicsCommandListClose(_commandList);
@@ -1044,11 +1066,13 @@ namespace PhantomRender.ImGui.Renderers
             }
 
             IntPtr cmdList = _commandList;
+            if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12: Executing command list 0x{cmdList.ToString("X")} on queue 0x{_commandQueue.ToString("X")}..."); Console.Out.Flush(); }
             CommandQueueExecuteCommandLists(_commandQueue, 1, &cmdList);
 
             ulong nextFence = ++_fenceValue;
             CommandQueueSignal(_commandQueue, _fence, nextFence);
             frame.FenceValue = nextFence;
+            if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12: Signal sent ({nextFence}). Frame processed."); Console.Out.Flush(); }
 
             if (_frameCounter <= 5)
             {
