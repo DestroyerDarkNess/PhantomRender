@@ -12,6 +12,21 @@ namespace PhantomRender.ImGui
         private static DirectX9Hook _dx9Hook;
         private static DirectX9Renderer _dx9Renderer;
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int DX9BeginSceneDelegate(IntPtr device);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int DX9EndSceneDelegate(IntPtr device);
+
+        // IDirect3DDevice9 vtable indices.
+        private const int DX9_VTABLE_BeginScene = 41;
+        private const int DX9_VTABLE_EndScene = 42;
+
+        private static DX9BeginSceneDelegate _dx9BeginScene;
+        private static DX9EndSceneDelegate _dx9EndScene;
+        private static IntPtr _dx9BeginScenePtr;
+        private static IntPtr _dx9EndScenePtr;
+
         private static OpenGLHook _glHook;
         private static OpenGLRenderer _glRenderer;
         private static bool _glInitFailed;
@@ -33,6 +48,37 @@ namespace PhantomRender.ImGui
 
         private static object _dx9Lock = new object();
 
+        private static void EnsureDX9SceneDelegates(IntPtr device)
+        {
+            if (device == IntPtr.Zero) return;
+
+            try
+            {
+                IntPtr vTable = Marshal.ReadIntPtr(device);
+
+                IntPtr beginScenePtr = Marshal.ReadIntPtr(vTable + DX9_VTABLE_BeginScene * IntPtr.Size);
+                IntPtr endScenePtr = Marshal.ReadIntPtr(vTable + DX9_VTABLE_EndScene * IntPtr.Size);
+
+                if (_dx9BeginScene == null || beginScenePtr != _dx9BeginScenePtr)
+                {
+                    _dx9BeginScenePtr = beginScenePtr;
+                    _dx9BeginScene = Marshal.GetDelegateForFunctionPointer<DX9BeginSceneDelegate>(beginScenePtr);
+                }
+
+                if (_dx9EndScene == null || endScenePtr != _dx9EndScenePtr)
+                {
+                    _dx9EndScenePtr = endScenePtr;
+                    _dx9EndScene = Marshal.GetDelegateForFunctionPointer<DX9EndSceneDelegate>(endScenePtr);
+                }
+            }
+            catch
+            {
+                // If we fail to resolve scene methods, we'll just render without them.
+                _dx9BeginScene = null;
+                _dx9EndScene = null;
+            }
+        }
+
         private static void InitializeDX9()
         {
             var deviceAddr = DirectX9Hook.GetDeviceAddress();
@@ -41,7 +87,7 @@ namespace PhantomRender.ImGui
                 _dx9Hook = new DirectX9Hook(deviceAddr);
                 _dx9Renderer = new DirectX9Renderer();
                 
-                _dx9Hook.OnEndScene += (device) =>
+                _dx9Hook.OnPresent += (device, sourceRect, destRect, hDestWindowOverride, dirtyRegion) =>
                 {
                     if (!_dx9Renderer.IsInitialized)
                     {
@@ -49,8 +95,8 @@ namespace PhantomRender.ImGui
                         {
                             if (!_dx9Renderer.IsInitialized)
                             {
-                                Console.WriteLine("[PhantomRender] DX9 OnEndScene - Initializing Renderer... (Lock Acquired)");
-                                IntPtr hWnd = GetWindowHandleFailSafe();
+                                Console.WriteLine("[PhantomRender] DX9 OnPresent - Initializing Renderer... (Lock Acquired)");
+                                IntPtr hWnd = hDestWindowOverride != IntPtr.Zero ? hDestWindowOverride : GetWindowHandleFailSafe();
                                 Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
                                 _dx9Renderer.Initialize(device, hWnd);
                             }
@@ -59,8 +105,31 @@ namespace PhantomRender.ImGui
 
                     if (_dx9Renderer.IsInitialized)
                     {
-                        _dx9Renderer.NewFrame();
-                        _dx9Renderer.Render();
+                        bool beganScene = false;
+                        try
+                        {
+                            EnsureDX9SceneDelegates(device);
+                            if (_dx9BeginScene != null && _dx9EndScene != null)
+                            {
+                                int hrBegin = _dx9BeginScene(device);
+                                beganScene = hrBegin >= 0;
+                                if (!beganScene)
+                                {
+                                    // If we can't begin a scene, trying to draw may fail anyway; skip EndScene in that case.
+                                    // We'll still attempt to render below as a best-effort fallback.
+                                }
+                            }
+
+                            _dx9Renderer.NewFrame();
+                            _dx9Renderer.Render();
+                        }
+                        finally
+                        {
+                            if (beganScene)
+                            {
+                                try { _dx9EndScene(device); } catch { }
+                            }
+                        }
                     }
                 };
 
