@@ -20,6 +20,7 @@ namespace PhantomRender.Core.Hooks.Graphics
     {
         // VTable indices for IDirect3DDevice9
         private const int VTABLE_Reset = 16;
+
         private const int VTABLE_Present = 17;
         private const int VTABLE_EndScene = 42;
 
@@ -33,17 +34,20 @@ namespace PhantomRender.Core.Hooks.Graphics
         public delegate int ResetDelegate(IntPtr device, ref Direct3D9.D3DPRESENT_PARAMETERS pPresentationParameters);
 
         public event Action<IntPtr> OnEndScene;
+
         public event Action<IntPtr, IntPtr, IntPtr, IntPtr, IntPtr> OnPresent;
+
         public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnBeforeReset;
+
         public event Action<IntPtr, Direct3D9.D3DPRESENT_PARAMETERS> OnAfterReset;
 
         private HookEngine _hookEngine;
-        
+
         private EndSceneDelegate _originalEndScene;
         private PresentDelegate _originalPresent;
         private ResetDelegate _originalReset;
 
-        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.EndScene | DX9HookFlags.Reset)
+        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.Reset | DX9HookFlags.Reset)
         {
             _hookEngine = new HookEngine();
 
