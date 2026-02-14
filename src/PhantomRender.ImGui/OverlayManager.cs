@@ -36,6 +36,8 @@ namespace PhantomRender.ImGui
 
         public static void Initialize()
         {
+            // Avoid force-loading additional graphics runtimes (D3D9/OpenGL) into DXGI games.
+            // Some games (and anti-cheat) are sensitive to unexpected modules/hooks.
             try { InitializeDX9(); }
             catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
 
@@ -81,6 +83,13 @@ namespace PhantomRender.ImGui
 
         private static void InitializeDX9()
         {
+            // Don't create a dummy D3D9 device if the game hasn't loaded D3D9.
+            // This prevents us from loading d3d9.dll into DX10/11/12 games.
+            if (GetModuleHandleW("d3d9.dll") == IntPtr.Zero)
+            {
+                return;
+            }
+
             var deviceAddr = DirectX9Hook.GetDeviceAddress();
             if (deviceAddr != IntPtr.Zero)
             {
@@ -323,6 +332,12 @@ namespace PhantomRender.ImGui
 
         private static void InitializeOpenGL()
         {
+            // Don't force-load OpenGL into non-OpenGL games.
+            if (GetModuleHandleW("opengl32.dll") == IntPtr.Zero)
+            {
+                return;
+            }
+
             _glHook = new OpenGLHook();
             _glRenderer = new OpenGLRenderer();
 
@@ -355,6 +370,9 @@ namespace PhantomRender.ImGui
 
         [DllImport("user32.dll")]
         private static extern IntPtr WindowFromDC(IntPtr hdc);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
+        private static extern IntPtr GetModuleHandleW(string lpModuleName);
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
