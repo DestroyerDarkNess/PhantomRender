@@ -69,11 +69,6 @@ namespace PhantomRender.ImGui.Renderers
             if (!IsInitialized) return;
 
             _frameCounter++;
-            if (_frameCounter % 100 == 0)
-            {
-                Console.WriteLine($"[PhantomRender] DirectX9Renderer: Render Loop Active. Frame: {_frameCounter}. Display: {IO.DisplaySize.X}x{IO.DisplaySize.Y}");
-                Console.Out.Flush();
-            }
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
