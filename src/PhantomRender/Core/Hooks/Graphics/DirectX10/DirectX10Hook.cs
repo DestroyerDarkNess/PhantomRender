@@ -13,9 +13,16 @@ namespace PhantomRender.Core.Hooks.Graphics
         private const int VTABLE_Present = 8;
         private const int VTABLE_GetDesc = 12;
         private const int VTABLE_ResizeBuffers = 13;
+        // IDXGISwapChain1::Present1 (some apps use this instead of Present)
+        private const int VTABLE_Present1 = 22;
+
+        private static readonly Guid IID_IDXGISwapChain1 = new Guid("790a45f7-0d42-4876-983a-0a55cfe6f4aa");
          
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int Present1Delegate(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int ResizeBuffersDelegate(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags);
@@ -26,6 +33,7 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private HookEngine _hookEngine;
         private PresentDelegate _originalPresent;
+        private Present1Delegate _originalPresent1;
         private ResizeBuffersDelegate _originalResizeBuffers;
 
         public DirectX10Hook(IntPtr swapChainAddress)
@@ -39,6 +47,9 @@ namespace PhantomRender.Core.Hooks.Graphics
 
             _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddr, new PresentDelegate(PresentHook));
             _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddr, new ResizeBuffersDelegate(ResizeBuffersHook));
+
+            // Optional: hook IDXGISwapChain1::Present1 too (Minecraft Bedrock and some UWP/flip-model apps use it).
+            TryHookPresent1(swapChainAddress);
         }
 
         public void Enable()
@@ -63,6 +74,53 @@ namespace PhantomRender.Core.Hooks.Graphics
                 Console.WriteLine($"[PhantomRender] DX10 Present error: {ex.Message}");
             }
             return _originalPresent(swapChain, syncInterval, flags);
+        }
+
+        private int Present1Hook(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters)
+        {
+            try
+            {
+                OnPresent?.Invoke(swapChain, syncInterval, flags);
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DXGI Present1 error: {ex.Message}");
+            }
+
+            // If Present1 is hooked, _originalPresent1 is always non-null.
+            return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
+        }
+
+        private void TryHookPresent1(IntPtr swapChain)
+        {
+            try
+            {
+                IntPtr swapChain1 = IntPtr.Zero;
+                Guid iid = IID_IDXGISwapChain1;
+                int hr = Marshal.QueryInterface(swapChain, ref iid, out swapChain1);
+                if (hr < 0 || swapChain1 == IntPtr.Zero)
+                {
+                    return;
+                }
+
+                try
+                {
+                    IntPtr vTable1 = MemoryUtils.ReadIntPtr(swapChain1);
+                    IntPtr present1Addr = MemoryUtils.ReadIntPtr(vTable1 + VTABLE_Present1 * IntPtr.Size);
+                    if (present1Addr != IntPtr.Zero)
+                    {
+                        _originalPresent1 = _hookEngine.CreateHook<Present1Delegate>(present1Addr, new Present1Delegate(Present1Hook));
+                    }
+                }
+                finally
+                {
+                    Marshal.Release(swapChain1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DXGI Present1 hook init failed: {ex.Message}");
+            }
         }
 
         private int ResizeBuffersHook(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
@@ -225,6 +283,40 @@ namespace PhantomRender.Core.Hooks.Graphics
                 IntPtr device;
                 IntPtr swapChain;
 
+                // Prefer creating a dummy swapchain via D3D11. Some processes fail to create D3D10 devices/swapchains
+                // (notably some UWP/Bedrock builds), but D3D11 is almost always available when DXGI is in use.
+                try
+                {
+                    IntPtr immediateContext;
+                    int featureLevel;
+                    int d3d11Hr = Direct3D11.D3D11CreateDeviceAndSwapChain(
+                        IntPtr.Zero,
+                        Direct3D11.D3D_DRIVER_TYPE_HARDWARE,
+                        IntPtr.Zero,
+                        0,
+                        null,
+                        0,
+                        Direct3D11.D3D11_SDK_VERSION,
+                        ref desc,
+                        out swapChain,
+                        out device,
+                        out featureLevel,
+                        out immediateContext);
+
+                    if (d3d11Hr >= 0 && swapChain != IntPtr.Zero)
+                    {
+                        Console.WriteLine("[PhantomRender] DXGI Dummy SwapChain created via D3D11.");
+                        Marshal.Release(device);
+                        Marshal.Release(immediateContext);
+                        return swapChain;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DXGI Dummy SwapChain via D3D11 failed: {ex.Message}");
+                    // Fall back to D3D10 below.
+                }
+
                 int result = Direct3D10.D3D10CreateDeviceAndSwapChain(
                     IntPtr.Zero,
                     Direct3D10.D3D10_DRIVER_TYPE_HARDWARE,
@@ -237,6 +329,7 @@ namespace PhantomRender.Core.Hooks.Graphics
 
                 if (result >= 0 && swapChain != IntPtr.Zero)
                 {
+                    Console.WriteLine("[PhantomRender] DXGI Dummy SwapChain created via D3D10.");
                     Marshal.Release(device);
                     // Note: We intentionally don't release the dummy swapChain here —
                     // we need it alive to read its VTable in the constructor.
@@ -244,6 +337,7 @@ namespace PhantomRender.Core.Hooks.Graphics
                     return swapChain;
                 }
 
+                Console.WriteLine($"[PhantomRender] DXGI Dummy SwapChain creation failed. D3D10 hr=0x{result:X8}");
                 return IntPtr.Zero;
             }
             finally

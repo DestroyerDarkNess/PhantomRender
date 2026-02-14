@@ -242,6 +242,10 @@ namespace PhantomRender.ImGui
                 _dx10Hook.Enable();
                 Console.WriteLine("[PhantomRender] DXGI Present Hook Enabled (auto-detects DX10/DX11/DX12).");
             }
+            else
+            {
+                Console.WriteLine("[PhantomRender] DXGI Hook NOT enabled (dummy SwapChain creation failed).");
+            }
         }
 
         private static void InitializeOpenGL()
