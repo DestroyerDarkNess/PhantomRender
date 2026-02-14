@@ -47,7 +47,7 @@ namespace PhantomRender.Core.Hooks.Graphics
         private PresentDelegate _originalPresent;
         private ResetDelegate _originalReset;
 
-        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.Reset | DX9HookFlags.Reset)
+        public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.EndScene | DX9HookFlags.Reset)
         {
             _hookEngine = new HookEngine();
 
