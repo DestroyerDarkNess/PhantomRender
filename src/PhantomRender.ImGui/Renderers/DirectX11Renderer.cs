@@ -13,7 +13,10 @@ namespace PhantomRender.ImGui.Renderers
         private const int VTABLE_ID3D11Device_CreateRenderTargetView = 9;
         private const int VTABLE_ID3D11Device_GetImmediateContext = 40;
         private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargets = 33;
+        private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews = 34;
         private const int VTABLE_ID3D11DeviceContext_OMGetRenderTargets = 89;
+
+        private const uint D3D11_KEEP_UNORDERED_ACCESS_VIEWS = 0xFFFFFFFF;
 
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
         private static readonly Guid IID_ID3D11Texture2D = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
@@ -35,6 +38,17 @@ namespace PhantomRender.ImGui.Renderers
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private unsafe delegate void OMSetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, IntPtr* renderTargetViews, IntPtr depthStencilView);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private unsafe delegate void OMSetRenderTargetsAndUnorderedAccessViewsDelegate(
+            IntPtr deviceContext,
+            uint numRTVs,
+            IntPtr* renderTargetViews,
+            IntPtr depthStencilView,
+            uint uavStartSlot,
+            uint numUAVs,
+            IntPtr* unorderedAccessViews,
+            uint* uavInitialCounts);
 
         private IntPtr _deviceContext;
         private IntPtr _renderTargetView;
@@ -163,7 +177,7 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
-                if (!BindOverlayRenderTarget(previousDepthStencilView))
+                if (!BindOverlayRenderTarget())
                 {
                     return;
                 }
@@ -511,7 +525,7 @@ namespace PhantomRender.ImGui.Renderers
             }
         }
 
-        private unsafe bool BindOverlayRenderTarget(IntPtr depthStencilView)
+        private unsafe bool BindOverlayRenderTarget()
         {
             if (_deviceContext == IntPtr.Zero || _renderTargetView == IntPtr.Zero)
             {
@@ -520,6 +534,17 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
+                IntPtr rtv = _renderTargetView;
+
+                // OMSetRenderTargets can clear OM UAV bindings in some engines. Prefer the UAV-aware variant and keep UAVs.
+                IntPtr omSetRTandUavAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
+                if (omSetRTandUavAddr != IntPtr.Zero)
+                {
+                    var omSetRTandUav = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsAndUnorderedAccessViewsDelegate>(omSetRTandUavAddr);
+                    omSetRTandUav(_deviceContext, 1, &rtv, IntPtr.Zero, 0, D3D11_KEEP_UNORDERED_ACCESS_VIEWS, null, null);
+                    return true;
+                }
+
                 IntPtr omSetRenderTargetsAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargets);
                 if (omSetRenderTargetsAddr == IntPtr.Zero)
                 {
@@ -527,8 +552,7 @@ namespace PhantomRender.ImGui.Renderers
                 }
 
                 var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddr);
-                IntPtr renderTargetView = _renderTargetView;
-                omSetRenderTargets(_deviceContext, 1, &renderTargetView, depthStencilView);
+                omSetRenderTargets(_deviceContext, 1, &rtv, IntPtr.Zero);
                 return true;
             }
             catch (Exception ex)
@@ -548,6 +572,14 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
+                IntPtr omSetRTandUavAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
+                if (omSetRTandUavAddr != IntPtr.Zero)
+                {
+                    var omSetRTandUav = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsAndUnorderedAccessViewsDelegate>(omSetRTandUavAddr);
+                    omSetRTandUav(_deviceContext, numViews, renderTargetViews, depthStencilView, 0, D3D11_KEEP_UNORDERED_ACCESS_VIEWS, null, null);
+                    return;
+                }
+
                 IntPtr omSetRenderTargetsAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargets);
                 if (omSetRenderTargetsAddr == IntPtr.Zero)
                 {
