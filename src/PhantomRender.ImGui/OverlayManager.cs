@@ -282,23 +282,27 @@ namespace PhantomRender.ImGui
 
                     try
                     {
-                        // Render with whichever renderer was initialized
-                        if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                        lock (_dxgiLock)
                         {
-                            _dx11Renderer.NewFrame();
-                            _dx11Renderer.Render(swapChain);
-                        }
+                            // Render with whichever renderer was initialized.
+                            // This lock also serializes rendering vs. ResizeBuffers (device/RTV recreation) to avoid races/crashes.
+                            if (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                            {
+                                _dx11Renderer.NewFrame();
+                                _dx11Renderer.Render(swapChain);
+                            }
 #if NET5_0_OR_GREATER
-                        else if (_dx12Renderer != null && _dx12Renderer.IsInitialized)
-                        {
-                            _dx12Renderer.NewFrame();
-                            _dx12Renderer.Render(swapChain);
-                        }
+                            else if (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+                            {
+                                _dx12Renderer.NewFrame();
+                                _dx12Renderer.Render(swapChain);
+                            }
 #endif
-                        else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
-                        {
-                            _dx10Renderer.NewFrame();
-                            _dx10Renderer.Render();
+                            else if (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+                            {
+                                _dx10Renderer.NewFrame();
+                                _dx10Renderer.Render();
+                            }
                         }
                     }
                     catch (Exception ex)

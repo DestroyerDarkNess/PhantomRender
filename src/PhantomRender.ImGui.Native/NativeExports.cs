@@ -50,6 +50,9 @@ namespace PhantomRender.ImGui.Native
                 // Mirror all console output into a per-game log file (e.g. "witcher3.log")
                 // so we still have the trace when the game exits/crashes.
                 ConsoleFileLog.Install(_hModule);
+
+                // Best-effort crash logging (managed unhandled + native SEH).
+                CrashHandlers.Install();
                 
                 Console.WriteLine("[PhantomRender] Console Allocated!");
                 

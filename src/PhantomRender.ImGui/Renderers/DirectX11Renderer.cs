@@ -31,7 +31,7 @@ namespace PhantomRender.ImGui.Renderers
         private delegate int CreateRenderTargetViewDelegate(IntPtr device, IntPtr resource, IntPtr desc, out IntPtr renderTargetView);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate void OMGetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, out IntPtr renderTargetView, out IntPtr depthStencilView);
+        private unsafe delegate void OMGetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, IntPtr* renderTargetViews, out IntPtr depthStencilView);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private unsafe delegate void OMSetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, IntPtr* renderTargetViews, IntPtr depthStencilView);
@@ -43,6 +43,7 @@ namespace PhantomRender.ImGui.Renderers
         private ulong _frameCounter;
         private bool _loggedRenderTargetReady;
         private bool _loggedStateBackupFailure;
+        private bool _loggedBackendReinit;
 
         public override unsafe bool Initialize(IntPtr device, IntPtr windowHandle)
         {
@@ -130,24 +131,39 @@ namespace PhantomRender.ImGui.Renderers
                 return;
             }
 
+            if (!EnsureBackendContext(_lastSwapChain))
+            {
+                return;
+            }
+
             if (!EnsureRenderTarget(_lastSwapChain))
             {
                 return;
             }
 
-            IntPtr previousRenderTargetView = IntPtr.Zero;
-            IntPtr previousDepthStencilView = IntPtr.Zero;
-            bool hasPreviousState = TryBackupOutputMergerState(out previousRenderTargetView, out previousDepthStencilView);
-            if (!hasPreviousState && !_loggedStateBackupFailure)
+            const uint OM_MAX_RENDER_TARGETS = 8; // D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT
+            IntPtr* previousRenderTargetViews = stackalloc IntPtr[(int)OM_MAX_RENDER_TARGETS];
+            for (int i = 0; i < OM_MAX_RENDER_TARGETS; i++)
             {
-                Console.WriteLine("[PhantomRender] DirectX11Renderer: OMGetRenderTargets failed, rendering without OM restore.");
-                Console.Out.Flush();
-                _loggedStateBackupFailure = true;
+                previousRenderTargetViews[i] = IntPtr.Zero;
+            }
+
+            IntPtr previousDepthStencilView = IntPtr.Zero;
+            bool hasPreviousState = TryBackupOutputMergerState(previousRenderTargetViews, OM_MAX_RENDER_TARGETS, out previousDepthStencilView);
+            if (!hasPreviousState)
+            {
+                if (!_loggedStateBackupFailure)
+                {
+                    Console.WriteLine("[PhantomRender] DirectX11Renderer: OMGetRenderTargets failed, skipping overlay render.");
+                    Console.Out.Flush();
+                    _loggedStateBackupFailure = true;
+                }
+                return;
             }
 
             try
             {
-                if (!BindOverlayRenderTarget(hasPreviousState ? previousDepthStencilView : IntPtr.Zero))
+                if (!BindOverlayRenderTarget(previousDepthStencilView))
                 {
                     return;
                 }
@@ -174,11 +190,98 @@ namespace PhantomRender.ImGui.Renderers
             }
             finally
             {
-                if (hasPreviousState)
+                RestoreOutputMergerState(previousRenderTargetViews, OM_MAX_RENDER_TARGETS, previousDepthStencilView);
+                for (int i = 0; i < OM_MAX_RENDER_TARGETS; i++)
                 {
-                    RestoreOutputMergerState(previousRenderTargetView, previousDepthStencilView);
-                    ReleaseComObject(previousRenderTargetView);
-                    ReleaseComObject(previousDepthStencilView);
+                    ReleaseComObject(previousRenderTargetViews[i]);
+                }
+                ReleaseComObject(previousDepthStencilView);
+            }
+        }
+
+        private unsafe bool EnsureBackendContext(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            IntPtr device = IntPtr.Zero;
+            IntPtr newContext = IntPtr.Zero;
+
+            try
+            {
+                if (!TryGetSwapChainDevice(swapChain, out device))
+                {
+                    return false;
+                }
+
+                newContext = GetImmediateContext(device);
+                if (newContext == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                // Most of the time the context stays stable. When games recreate the device/context (scene/world load, etc),
+                // continuing to use the old context can crash. Detect and re-init ImGui DX11 backend.
+                if (_deviceContext != IntPtr.Zero && newContext == _deviceContext)
+                {
+                    Marshal.Release(newContext);
+                    newContext = IntPtr.Zero;
+                    return true;
+                }
+
+                if (_deviceContext != IntPtr.Zero)
+                {
+                    Marshal.Release(_deviceContext);
+                    _deviceContext = IntPtr.Zero;
+                }
+
+                // Fully re-init the DX11 backend with the new device/context.
+                try { ImGuiImplD3D11.SetCurrentContext(Context); } catch { }
+                try { ImGuiImplD3D11.Shutdown(); } catch { }
+
+                ImGuiImplD3D11.SetCurrentContext(Context);
+                if (!ImGuiImplD3D11.Init((ID3D11Device*)device, (ID3D11DeviceContext*)newContext))
+                {
+                    // Keep the renderer alive; we'll retry on future frames.
+                    Marshal.Release(newContext);
+                    newContext = IntPtr.Zero;
+                    return false;
+                }
+
+                _deviceContext = newContext;
+                newContext = IntPtr.Zero; // now owned by _deviceContext
+
+                // The render target (and OM restore behavior) is tied to the old context/device state.
+                ReleaseRenderTarget();
+                _loggedStateBackupFailure = false;
+
+                if (!_loggedBackendReinit)
+                {
+                    Console.WriteLine("[PhantomRender] DirectX11Renderer: D3D11 backend reinitialized (device/context change).");
+                    Console.Out.Flush();
+                    _loggedBackendReinit = true;
+                }
+
+                return true;
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DirectX11Renderer: EnsureBackendContext error: {ex.Message}");
+                Console.Out.Flush();
+                return false;
+            }
+            finally
+            {
+                if (newContext != IntPtr.Zero)
+                {
+                    Marshal.Release(newContext);
+                }
+
+                if (device != IntPtr.Zero)
+                {
+                    Marshal.Release(device);
                 }
             }
         }
@@ -379,9 +482,8 @@ namespace PhantomRender.ImGui.Renderers
             return hr >= 0 && renderTargetView != IntPtr.Zero;
         }
 
-        private bool TryBackupOutputMergerState(out IntPtr renderTargetView, out IntPtr depthStencilView)
+        private unsafe bool TryBackupOutputMergerState(IntPtr* renderTargetViews, uint numViews, out IntPtr depthStencilView)
         {
-            renderTargetView = IntPtr.Zero;
             depthStencilView = IntPtr.Zero;
 
             if (_deviceContext == IntPtr.Zero)
@@ -398,7 +500,7 @@ namespace PhantomRender.ImGui.Renderers
                 }
 
                 var omGetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMGetRenderTargetsDelegate>(omGetRenderTargetsAddr);
-                omGetRenderTargets(_deviceContext, 1, out renderTargetView, out depthStencilView);
+                omGetRenderTargets(_deviceContext, numViews, renderTargetViews, out depthStencilView);
                 return true;
             }
             catch (Exception ex)
@@ -437,7 +539,7 @@ namespace PhantomRender.ImGui.Renderers
             }
         }
 
-        private unsafe void RestoreOutputMergerState(IntPtr renderTargetView, IntPtr depthStencilView)
+        private unsafe void RestoreOutputMergerState(IntPtr* renderTargetViews, uint numViews, IntPtr depthStencilView)
         {
             if (_deviceContext == IntPtr.Zero)
             {
@@ -453,15 +555,7 @@ namespace PhantomRender.ImGui.Renderers
                 }
 
                 var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddr);
-                if (renderTargetView != IntPtr.Zero)
-                {
-                    IntPtr target = renderTargetView;
-                    omSetRenderTargets(_deviceContext, 1, &target, depthStencilView);
-                }
-                else
-                {
-                    omSetRenderTargets(_deviceContext, 0, null, depthStencilView);
-                }
+                omSetRenderTargets(_deviceContext, numViews, renderTargetViews, depthStencilView);
             }
             catch (Exception ex)
             {
