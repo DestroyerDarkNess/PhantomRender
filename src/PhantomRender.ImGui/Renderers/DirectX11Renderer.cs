@@ -170,12 +170,6 @@ namespace PhantomRender.ImGui.Renderers
                 Hexa.NET.ImGui.ImGui.Render();
                 var drawData = Hexa.NET.ImGui.ImGui.GetDrawData();
 
-                if (_frameCounter <= 5 || _frameCounter % 300 == 0)
-                {
-                    Console.WriteLine($"[PhantomRender] DX11 Frame {_frameCounter}: Display={IO.DisplaySize.X}x{IO.DisplaySize.Y}, DrawLists={drawData.CmdListsCount}, TotalVtx={drawData.TotalVtxCount}, TotalIdx={drawData.TotalIdxCount}");
-                    Console.Out.Flush();
-                }
-
                 ImGuiImplD3D11.RenderDrawData(drawData);
             }
             finally
