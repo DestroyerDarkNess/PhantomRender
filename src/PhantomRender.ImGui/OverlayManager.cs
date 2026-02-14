@@ -1,6 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Threading;
 using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Hooks.Graphics.OpenGL;
 using PhantomRender.ImGui.Renderers;
@@ -9,8 +10,35 @@ namespace PhantomRender.ImGui
 {
     public static class OverlayManager
     {
+        private enum BackendKind
+        {
+            None = 0,
+            DXGI = 1,
+            DX9 = 2,
+            OpenGL = 3,
+        }
+
+        // Hooks can be called from different threads (DXGI Present, D3D9 Present, wglSwapBuffers).
+        // ImGui and its backends are not thread-safe, so serialize all hook callbacks that touch ImGui/device state.
+        private static readonly object _renderLock = new object();
+        private static readonly object _initLock = new object();
+
+        // Only one backend should be active at a time in sensitive engines (Frostbite, etc).
+        // 0=None, else BackendKind enum.
+        private static int _activeBackend = (int)BackendKind.None;
+        private static BackendKind _probingBackend = BackendKind.None;
+        private static Thread _probeThread;
+        private static volatile bool _probeStopRequested;
+        private static volatile bool _probeStarted;
+
+        // Probe timeouts (ms). DXGI is usually available quickly; if it doesn't trigger, we fall back.
+        private const int PROBE_DXGI_TIMEOUT_MS = 12_000;
+        private const int PROBE_DX9_TIMEOUT_MS = 10_000;
+        private const int PROBE_OPENGL_TIMEOUT_MS = 10_000;
+
         private static DirectX9Hook _dx9Hook;
         private static DirectX9Renderer _dx9Renderer;
+        private static IntPtr _dx9TargetWindow;
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int DX9BeginSceneDelegate(IntPtr device);
@@ -30,25 +58,305 @@ namespace PhantomRender.ImGui
         private static OpenGLHook _glHook;
         private static OpenGLRenderer _glRenderer;
         private static bool _glInitFailed;
+        private static IntPtr _glTargetWindow;
 
         private static DirectX10Hook _dx10Hook;
         private static DirectX10Renderer _dx10Renderer;
+        private static IntPtr _dxgiTargetWindow;
 
         public static void Initialize()
         {
-            // Avoid force-loading additional graphics runtimes (D3D9/OpenGL) into DXGI games.
-            // Some games (and anti-cheat) are sensitive to unexpected modules/hooks.
-            try { InitializeDX9(); }
-            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DX9 Init Failed: {ex}"); }
+            lock (_initLock)
+            {
+                if (_probeStarted) return;
+                _probeStarted = true;
+            }
 
-            try { InitializeDXGI(); }
-            catch (Exception ex) { Console.WriteLine($"[PhantomRender] DXGI Init Failed: {ex}"); }
-
-            try { InitializeOpenGL(); }
-            catch (Exception ex) { Console.WriteLine($"[PhantomRender] OpenGL Init Failed: {ex}"); }
+            // Probe backends and enable ONLY the one that actually triggers for this process.
+            // This avoids multi-backend ImGui usage and reduces the hook surface (important for some games/anti-cheat).
+            _probeThread = new Thread(ProbeThreadMain)
+            {
+                IsBackground = true,
+                Name = "PhantomRender.BackendProbe"
+            };
+            _probeThread.Start();
         }
 
-        private static object _dx9Lock = new object();
+        private static void ProbeThreadMain()
+        {
+            try
+            {
+                while (!_probeStopRequested && GetActiveBackend() == BackendKind.None)
+                {
+                    var order = GetProbeOrder();
+                    bool startedAny = false;
+
+                    for (int i = 0; i < order.Length; i++)
+                    {
+                        if (_probeStopRequested || GetActiveBackend() != BackendKind.None)
+                            break;
+
+                        BackendKind kind = order[i];
+                        if (!IsBackendCandidate(kind))
+                            continue;
+
+                        startedAny = true;
+                        if (!TryStartProbe(kind))
+                            continue;
+
+                        int timeoutMs = GetProbeTimeoutMs(kind);
+                        long startTicks = Stopwatch.GetTimestamp();
+
+                        while (!_probeStopRequested && GetActiveBackend() == BackendKind.None && !HasElapsed(startTicks, timeoutMs))
+                        {
+                            Thread.Sleep(200);
+                        }
+
+                        if (GetActiveBackend() != BackendKind.None)
+                            break;
+
+                        StopProbe(kind);
+                    }
+
+                    if (!startedAny)
+                    {
+                        // No known graphics runtime loaded yet. Wait a bit and try again.
+                        Thread.Sleep(250);
+                    }
+                    else
+                    {
+                        // Avoid rapid enable/disable loops in processes that never present.
+                        Thread.Sleep(500);
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                try
+                {
+                    Console.WriteLine($"[PhantomRender] Backend probe thread error: {ex}");
+                    Console.Out.Flush();
+                }
+                catch { }
+            }
+        }
+
+        private static BackendKind GetActiveBackend()
+        {
+            return (BackendKind)Volatile.Read(ref _activeBackend);
+        }
+
+        private static BackendKind[] GetProbeOrder()
+        {
+            // Heuristic:
+            // - If D3D9 is loaded and D3D11 isn't, prefer D3D9 first (old games).
+            // - Otherwise, prefer DXGI first (covers DX10/DX11/DX12).
+            bool d3d9Loaded = GetModuleHandleW("d3d9.dll") != IntPtr.Zero;
+            bool d3d11Loaded = GetModuleHandleW("d3d11.dll") != IntPtr.Zero;
+
+            if (d3d9Loaded && !d3d11Loaded)
+            {
+                return new[] { BackendKind.DX9, BackendKind.DXGI, BackendKind.OpenGL };
+            }
+
+            return new[] { BackendKind.DXGI, BackendKind.DX9, BackendKind.OpenGL };
+        }
+
+        private static bool IsBackendCandidate(BackendKind kind)
+        {
+            switch (kind)
+            {
+                case BackendKind.DXGI:
+                    return GetModuleHandleW("dxgi.dll") != IntPtr.Zero;
+                case BackendKind.DX9:
+                    return GetModuleHandleW("d3d9.dll") != IntPtr.Zero;
+                case BackendKind.OpenGL:
+                    return GetModuleHandleW("opengl32.dll") != IntPtr.Zero;
+                default:
+                    return false;
+            }
+        }
+
+        private static int GetProbeTimeoutMs(BackendKind kind)
+        {
+            switch (kind)
+            {
+                case BackendKind.DXGI: return PROBE_DXGI_TIMEOUT_MS;
+                case BackendKind.DX9: return PROBE_DX9_TIMEOUT_MS;
+                case BackendKind.OpenGL: return PROBE_OPENGL_TIMEOUT_MS;
+                default: return 5_000;
+            }
+        }
+
+        private static bool HasElapsed(long startTicks, int timeoutMs)
+        {
+            long elapsedTicks = Stopwatch.GetTimestamp() - startTicks;
+            double elapsedMs = (double)elapsedTicks * 1000.0 / Stopwatch.Frequency;
+            return elapsedMs >= timeoutMs;
+        }
+
+        private static bool ShouldRunBackendCallback(BackendKind kind)
+        {
+            BackendKind active = GetActiveBackend();
+            if (active == BackendKind.None)
+            {
+                return _probingBackend == kind;
+            }
+
+            return active == kind;
+        }
+
+        private static bool EnsureActiveBackendSelected(BackendKind kind)
+        {
+            int current = Volatile.Read(ref _activeBackend);
+            if (current == (int)kind)
+                return true;
+
+            if (current != (int)BackendKind.None)
+                return false;
+
+            if (Interlocked.CompareExchange(ref _activeBackend, (int)kind, (int)BackendKind.None) != (int)BackendKind.None)
+                return false;
+
+            _probeStopRequested = true;
+            DisableHooksExcept(kind);
+
+            Console.WriteLine($"[PhantomRender] Active backend selected: {kind}");
+            Console.Out.Flush();
+            return true;
+        }
+
+        private static void DisableHooksExcept(BackendKind keep)
+        {
+            lock (_renderLock)
+            {
+                if (keep != BackendKind.DXGI)
+                {
+                    StopProbe(BackendKind.DXGI);
+                }
+
+                if (keep != BackendKind.DX9)
+                {
+                    StopProbe(BackendKind.DX9);
+                }
+
+                if (keep != BackendKind.OpenGL)
+                {
+                    StopProbe(BackendKind.OpenGL);
+                }
+            }
+        }
+
+        private static bool TryStartProbe(BackendKind kind)
+        {
+            lock (_renderLock)
+            {
+                if (GetActiveBackend() != BackendKind.None)
+                    return false;
+
+                // Only one probing hook at a time.
+                if (_probingBackend != BackendKind.None && _probingBackend != kind)
+                {
+                    StopProbe(_probingBackend);
+                }
+
+                _probingBackend = kind;
+
+                try
+                {
+                    switch (kind)
+                    {
+                        case BackendKind.DXGI:
+                            return TryInitializeDXGI();
+                        case BackendKind.DX9:
+                            return TryInitializeDX9();
+                        case BackendKind.OpenGL:
+                            return TryInitializeOpenGL();
+                        default:
+                            return false;
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] Probe start failed for {kind}: {ex}");
+                    Console.Out.Flush();
+                    return false;
+                }
+            }
+        }
+
+        private static void StopProbe(BackendKind kind)
+        {
+            lock (_renderLock)
+            {
+                try
+                {
+                    switch (kind)
+                    {
+                        case BackendKind.DXGI:
+                            if (_dx10Hook != null)
+                            {
+                                try { _dx10Hook.Disable(); } catch { }
+                                try { _dx10Hook.Dispose(); } catch { }
+                                _dx10Hook = null;
+                            }
+
+                            _dxgiTargetWindow = IntPtr.Zero;
+                            try { _dx11Renderer?.Dispose(); } catch { }
+                            _dx11Renderer = null;
+#if NET5_0_OR_GREATER
+                            try { _dx12Renderer?.Dispose(); } catch { }
+                            _dx12Renderer = null;
+#endif
+                            try { _dx10Renderer?.Dispose(); } catch { }
+                            _dx10Renderer = null;
+                            break;
+
+                        case BackendKind.DX9:
+                            if (_dx9Hook != null)
+                            {
+                                try { _dx9Hook.Disable(); } catch { }
+                                try { _dx9Hook.Dispose(); } catch { }
+                                _dx9Hook = null;
+                            }
+
+                            _dx9TargetWindow = IntPtr.Zero;
+                            _dx9BeginScene = null;
+                            _dx9EndScene = null;
+                            _dx9BeginScenePtr = IntPtr.Zero;
+                            _dx9EndScenePtr = IntPtr.Zero;
+                            try { _dx9Renderer?.Dispose(); } catch { }
+                            _dx9Renderer = null;
+                            break;
+
+                        case BackendKind.OpenGL:
+                            if (_glHook != null)
+                            {
+                                try { _glHook.Disable(); } catch { }
+                                try { _glHook.Dispose(); } catch { }
+                                _glHook = null;
+                            }
+
+                            _glTargetWindow = IntPtr.Zero;
+                            _glInitFailed = false;
+                            try { _glRenderer?.Dispose(); } catch { }
+                            _glRenderer = null;
+                            break;
+                    }
+                }
+                catch
+                {
+                    // Best-effort cleanup only.
+                }
+                finally
+                {
+                    if (_probingBackend == kind)
+                    {
+                        _probingBackend = BackendKind.None;
+                    }
+                }
+            }
+        }
 
         private static void EnsureDX9SceneDelegates(IntPtr device)
         {
@@ -81,13 +389,18 @@ namespace PhantomRender.ImGui
             }
         }
 
-        private static void InitializeDX9()
+        private static bool TryInitializeDX9()
         {
             // Don't create a dummy D3D9 device if the game hasn't loaded D3D9.
             // This prevents us from loading d3d9.dll into DX10/11/12 games.
             if (GetModuleHandleW("d3d9.dll") == IntPtr.Zero)
             {
-                return;
+                return false;
+            }
+
+            if (_dx9Hook != null)
+            {
+                return true;
             }
 
             var deviceAddr = DirectX9Hook.GetDeviceAddress();
@@ -98,45 +411,55 @@ namespace PhantomRender.ImGui
                 
                 _dx9Hook.OnPresent += (device, sourceRect, destRect, hDestWindowOverride, dirtyRegion) =>
                 {
-                    if (!_dx9Renderer.IsInitialized)
+                    lock (_renderLock)
                     {
-                        lock (_dx9Lock)
+                        if (!ShouldRunBackendCallback(BackendKind.DX9))
                         {
-                            if (!_dx9Renderer.IsInitialized)
+                            return;
+                        }
+
+                        IntPtr hWnd = hDestWindowOverride != IntPtr.Zero ? hDestWindowOverride : GetWindowHandleFailSafe();
+                        if (hWnd == IntPtr.Zero) return;
+
+                        // Some processes have multiple D3D9 devices/windows; draw only on the first one we lock onto.
+                        if (_dx9TargetWindow != IntPtr.Zero && hWnd != _dx9TargetWindow)
+                        {
+                            return;
+                        }
+
+                        if (!_dx9Renderer.IsInitialized)
+                        {
+                            Console.WriteLine("[PhantomRender] DX9 OnPresent - Initializing Renderer... (Lock Acquired)");
+                            Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
+                            _dx9TargetWindow = hWnd;
+                            _dx9Renderer.Initialize(device, hWnd);
+                            if (_dx9Renderer.IsInitialized)
                             {
-                                Console.WriteLine("[PhantomRender] DX9 OnPresent - Initializing Renderer... (Lock Acquired)");
-                                IntPtr hWnd = hDestWindowOverride != IntPtr.Zero ? hDestWindowOverride : GetWindowHandleFailSafe();
-                                Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
-                                _dx9Renderer.Initialize(device, hWnd);
+                                EnsureActiveBackendSelected(BackendKind.DX9);
                             }
                         }
-                    }
 
-                    if (_dx9Renderer.IsInitialized)
-                    {
-                        bool beganScene = false;
-                        try
+                        if (_dx9Renderer.IsInitialized)
                         {
-                            EnsureDX9SceneDelegates(device);
-                            if (_dx9BeginScene != null && _dx9EndScene != null)
+                            bool beganScene = false;
+                            try
                             {
-                                int hrBegin = _dx9BeginScene(device);
-                                beganScene = hrBegin >= 0;
-                                if (!beganScene)
+                                EnsureDX9SceneDelegates(device);
+                                if (_dx9BeginScene != null && _dx9EndScene != null)
                                 {
-                                    // If we can't begin a scene, trying to draw may fail anyway; skip EndScene in that case.
-                                    // We'll still attempt to render below as a best-effort fallback.
+                                    int hrBegin = _dx9BeginScene(device);
+                                    beganScene = hrBegin >= 0;
                                 }
-                            }
 
-                            _dx9Renderer.NewFrame();
-                            _dx9Renderer.Render();
-                        }
-                        finally
-                        {
-                            if (beganScene)
+                                _dx9Renderer.NewFrame();
+                                _dx9Renderer.Render();
+                            }
+                            finally
                             {
-                                try { _dx9EndScene(device); } catch { }
+                                if (beganScene)
+                                {
+                                    try { _dx9EndScene(device); } catch { }
+                                }
                             }
                         }
                     }
@@ -144,8 +467,13 @@ namespace PhantomRender.ImGui
 
                 _dx9Hook.OnBeforeReset += (device, pp) =>
                 {
-                    lock (_dx9Lock)
+                    lock (_renderLock)
                     {
+                        if (GetActiveBackend() != BackendKind.DX9)
+                        {
+                            return;
+                        }
+
                         if (_dx9Renderer.IsInitialized)
                         {
                             Console.WriteLine("[PhantomRender] DX9 Pre-Reset: Invalidating device objects...");
@@ -156,8 +484,13 @@ namespace PhantomRender.ImGui
 
                 _dx9Hook.OnAfterReset += (device, pp) =>
                 {
-                    lock (_dx9Lock)
+                    lock (_renderLock)
                     {
+                        if (GetActiveBackend() != BackendKind.DX9)
+                        {
+                            return;
+                        }
+
                         if (_dx9Renderer.IsInitialized)
                         {
                             Console.WriteLine("[PhantomRender] DX9 Post-Reset: Recreating device objects...");
@@ -168,14 +501,15 @@ namespace PhantomRender.ImGui
 
                 _dx9Hook.Enable();
                 Console.WriteLine("[PhantomRender] DX9 Hook Enabled.");
+                return true;
             }
             else
             {
                  Console.WriteLine("[PhantomRender] DX9 Device Not Found (Dummy creation failed).");
+                return false;
             }
         }
 
-        private static object _dxgiLock = new object();
         private static DirectX11Renderer _dx11Renderer;
 #if NET5_0_OR_GREATER
         private static DirectX12Renderer _dx12Renderer;
@@ -188,8 +522,18 @@ namespace PhantomRender.ImGui
         ///   - Try IID_ID3D11Device first → use DX11 renderer
         ///   - Fall back to IID_ID3D10Device → use DX10 renderer
         /// </summary>
-        private static void InitializeDXGI()
+        private static bool TryInitializeDXGI()
         {
+            if (GetModuleHandleW("dxgi.dll") == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (_dx10Hook != null)
+            {
+                return true;
+            }
+
             var swapChainAddr = DirectX10Hook.GetSwapChainAddress();
             if (swapChainAddr != IntPtr.Zero)
             {
@@ -198,7 +542,7 @@ namespace PhantomRender.ImGui
 
                 _dx10Hook.OnBeforeResizeBuffers += (swapChain, bufferCount, width, height, newFormat, swapChainFlags) =>
                 {
-                    lock (_dxgiLock)
+                    lock (_renderLock)
                     {
                         try { _dx11Renderer?.OnLostDevice(); } catch { }
                         try { _dx10Renderer?.OnLostDevice(); } catch { }
@@ -210,7 +554,7 @@ namespace PhantomRender.ImGui
 
                 _dx10Hook.OnAfterResizeBuffers += (swapChain, bufferCount, width, height, newFormat, swapChainFlags, hr) =>
                 {
-                    lock (_dxgiLock)
+                    lock (_renderLock)
                     {
                         try { _dx11Renderer?.OnResetDevice(); } catch { }
                         try { _dx10Renderer?.OnResetDevice(); } catch { }
@@ -222,76 +566,102 @@ namespace PhantomRender.ImGui
 
                 _dx10Hook.OnPresent += (swapChain, syncInterval, flags) =>
                 {
-                    // Check if either renderer is already initialized
-                    bool hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
-                                    || (_dx10Renderer != null && _dx10Renderer.IsInitialized)
-#if NET5_0_OR_GREATER
-                                    || (_dx12Renderer != null && _dx12Renderer.IsInitialized)
-#endif
-                                    ;
-
-                    if (!hasRenderer)
+                    lock (_renderLock)
                     {
-                        lock (_dxgiLock)
+                        if (!ShouldRunBackendCallback(BackendKind.DXGI))
                         {
-                            // Double-check after acquiring lock
-                            hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
-                                       || (_dx10Renderer != null && _dx10Renderer.IsInitialized)
-#if NET5_0_OR_GREATER
-                                       || (_dx12Renderer != null && _dx12Renderer.IsInitialized)
-#endif
-                                       ;
-                            if (!hasRenderer)
-                            {
-                                Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
-                                IntPtr hWnd = ResolveWindowHandleFromSwapChain(swapChain);
+                            return;
+                        }
 
-                                // 1. Try DX11 first (most modern games use DX11)
-                                IntPtr dx11Device = _dx10Hook.GetDeviceAs11(swapChain);
-                                if (dx11Device != IntPtr.Zero)
+                        // Filter out secondary swapchains (common in engines that host overlays/webviews inside the process).
+                        IntPtr swapChainWindow = IntPtr.Zero;
+                        try { _dx10Hook.TryGetOutputWindow(swapChain, out swapChainWindow); } catch { }
+
+                        IntPtr expectedWindow = GetWindowHandleFailSafe();
+                        if (swapChainWindow == IntPtr.Zero)
+                        {
+                            swapChainWindow = expectedWindow;
+                        }
+
+                        if (_dxgiTargetWindow == IntPtr.Zero)
+                        {
+                            // If we know the main window, only lock onto swapchains that present to it.
+                            if (expectedWindow != IntPtr.Zero && swapChainWindow != IntPtr.Zero && swapChainWindow != expectedWindow)
+                            {
+                                return;
+                            }
+
+                            _dxgiTargetWindow = swapChainWindow != IntPtr.Zero ? swapChainWindow : expectedWindow;
+                        }
+                        else if (_dxgiTargetWindow != IntPtr.Zero && swapChainWindow != IntPtr.Zero && swapChainWindow != _dxgiTargetWindow)
+                        {
+                            return;
+                        }
+
+                        // Check if either renderer is already initialized
+                        bool hasRenderer = (_dx11Renderer != null && _dx11Renderer.IsInitialized)
+                                        || (_dx10Renderer != null && _dx10Renderer.IsInitialized)
+#if NET5_0_OR_GREATER
+                                        || (_dx12Renderer != null && _dx12Renderer.IsInitialized)
+#endif
+                                        ;
+
+                        if (!hasRenderer)
+                        {
+                            Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
+                            IntPtr hWnd = swapChainWindow != IntPtr.Zero ? swapChainWindow : ResolveWindowHandleFromSwapChain(swapChain);
+
+                            // 1. Try DX11 first (most modern games use DX11)
+                            IntPtr dx11Device = _dx10Hook.GetDeviceAs11(swapChain);
+                            if (dx11Device != IntPtr.Zero)
+                            {
+                                Console.WriteLine($"[PhantomRender] DXGI: Detected DX11 device: {dx11Device}. Window: {hWnd}");
+                                _dx11Renderer = new DirectX11Renderer();
+                                _dx11Renderer.Initialize(dx11Device, hWnd);
+                                Marshal.Release(dx11Device); // Release extra ref from GetDeviceAs11
+
+                                if (_dx11Renderer.IsInitialized)
+                                    EnsureActiveBackendSelected(BackendKind.DXGI);
+                            }
+                            else
+                            {
+#if NET5_0_OR_GREATER
+                                // 2. Try DX12
+                                IntPtr dx12Device = _dx10Hook.GetDeviceAs12(swapChain);
+                                if (dx12Device != IntPtr.Zero)
                                 {
-                                    Console.WriteLine($"[PhantomRender] DXGI: Detected DX11 device: {dx11Device}. Window: {hWnd}");
-                                    _dx11Renderer = new DirectX11Renderer();
-                                    _dx11Renderer.Initialize(dx11Device, hWnd);
-                                    Marshal.Release(dx11Device); // Release extra ref from GetDeviceAs11
+                                    Console.WriteLine($"[PhantomRender] DXGI: Detected DX12 device: {dx12Device}. Window: {hWnd}");
+                                    _dx12Renderer = new DirectX12Renderer();
+                                    _dx12Renderer.Initialize(dx12Device, hWnd);
+                                    Marshal.Release(dx12Device); // Release extra ref from GetDeviceAs12
+
+                                    if (_dx12Renderer.IsInitialized)
+                                        EnsureActiveBackendSelected(BackendKind.DXGI);
                                 }
                                 else
+#endif
                                 {
-#if NET5_0_OR_GREATER
-                                    // 2. Try DX12
-                                    IntPtr dx12Device = _dx10Hook.GetDeviceAs12(swapChain);
-                                    if (dx12Device != IntPtr.Zero)
+                                    // 3. Fall back to DX10
+                                    IntPtr dx10Device = _dx10Hook.GetDevice(swapChain);
+                                    if (dx10Device != IntPtr.Zero)
                                     {
-                                        Console.WriteLine($"[PhantomRender] DXGI: Detected DX12 device: {dx12Device}. Window: {hWnd}");
-                                        _dx12Renderer = new DirectX12Renderer();
-                                        _dx12Renderer.Initialize(dx12Device, hWnd);
-                                        Marshal.Release(dx12Device); // Release extra ref from GetDeviceAs12
+                                        Console.WriteLine($"[PhantomRender] DXGI: Detected DX10 device: {dx10Device}. Window: {hWnd}");
+                                        _dx10Renderer = new DirectX10Renderer();
+                                        _dx10Renderer.Initialize(dx10Device, hWnd);
+                                        Marshal.Release(dx10Device); // Release extra ref from GetDevice
+
+                                        if (_dx10Renderer.IsInitialized)
+                                            EnsureActiveBackendSelected(BackendKind.DXGI);
                                     }
                                     else
-#endif
                                     {
-                                        // 3. Fall back to DX10
-                                        IntPtr dx10Device = _dx10Hook.GetDevice(swapChain);
-                                        if (dx10Device != IntPtr.Zero)
-                                        {
-                                            Console.WriteLine($"[PhantomRender] DXGI: Detected DX10 device: {dx10Device}. Window: {hWnd}");
-                                            _dx10Renderer = new DirectX10Renderer();
-                                            _dx10Renderer.Initialize(dx10Device, hWnd);
-                                            Marshal.Release(dx10Device); // Release extra ref from GetDevice
-                                        }
-                                        else
-                                        {
-                                            Console.WriteLine("[PhantomRender] DXGI: Could NOT detect any device from SwapChain!");
-                                        }
+                                        Console.WriteLine("[PhantomRender] DXGI: Could NOT detect any device from SwapChain!");
                                     }
                                 }
                             }
                         }
-                    }
 
-                    try
-                    {
-                        lock (_dxgiLock)
+                        try
                         {
                             // Render with whichever renderer was initialized.
                             // This lock also serializes rendering vs. ResizeBuffers (device/RTV recreation) to avoid races/crashes.
@@ -313,29 +683,36 @@ namespace PhantomRender.ImGui
                                 _dx10Renderer.Render();
                             }
                         }
-                    }
-                    catch (Exception ex)
-                    {
-                        Console.WriteLine($"[PhantomRender] DXGI OnPresent Lambda Error: {ex}");
-                        Console.Out.Flush();
+                        catch (Exception ex)
+                        {
+                            Console.WriteLine($"[PhantomRender] DXGI OnPresent Lambda Error: {ex}");
+                            Console.Out.Flush();
+                        }
                     }
                 };
                 
                 _dx10Hook.Enable();
                 Console.WriteLine("[PhantomRender] DXGI Present Hook Enabled (auto-detects DX10/DX11/DX12).");
+                return true;
             }
             else
             {
                 Console.WriteLine("[PhantomRender] DXGI Hook NOT enabled (dummy SwapChain creation failed).");
+                return false;
             }
         }
 
-        private static void InitializeOpenGL()
+        private static bool TryInitializeOpenGL()
         {
             // Don't force-load OpenGL into non-OpenGL games.
             if (GetModuleHandleW("opengl32.dll") == IntPtr.Zero)
             {
-                return;
+                return false;
+            }
+
+            if (_glHook != null)
+            {
+                return true;
             }
 
             _glHook = new OpenGLHook();
@@ -343,29 +720,52 @@ namespace PhantomRender.ImGui
 
             _glHook.OnSwapBuffers += (hdc) =>
             {
-                 if (!_glRenderer.IsInitialized && !_glInitFailed)
-                 {
-                     Console.WriteLine("[PhantomRender] OpenGL OnSwapBuffers - Initializing Renderer...");
-                     IntPtr hWnd = WindowFromDC(hdc);
-                     if (hWnd == IntPtr.Zero) hWnd = GetWindowHandleFailSafe();
-                     Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
-                     
-                     if (!_glRenderer.Initialize(IntPtr.Zero, hWnd))
-                     {
-                         Console.WriteLine("[PhantomRender] OpenGL Renderer init failed, will not retry.");
-                         _glInitFailed = true;
-                     }
-                 }
+                lock (_renderLock)
+                {
+                    if (!ShouldRunBackendCallback(BackendKind.OpenGL))
+                    {
+                        return;
+                    }
 
-                 if (_glRenderer.IsInitialized)
-                 {
-                     _glRenderer.NewFrame();
-                     _glRenderer.Render();
-                 }
+                    IntPtr hWnd = WindowFromDC(hdc);
+                    if (hWnd == IntPtr.Zero) hWnd = GetWindowHandleFailSafe();
+                    if (hWnd == IntPtr.Zero) return;
+
+                    // Some processes have multiple OpenGL swapbuffers calls (CEF/overlays). Draw only on the first window we lock onto.
+                    if (_glTargetWindow != IntPtr.Zero && hWnd != _glTargetWindow)
+                    {
+                        return;
+                    }
+
+                    if (!_glRenderer.IsInitialized && !_glInitFailed)
+                    {
+                        Console.WriteLine("[PhantomRender] OpenGL OnSwapBuffers - Initializing Renderer...");
+                        Console.WriteLine($"[PhantomRender] Target Window: {hWnd}");
+
+                        _glTargetWindow = hWnd;
+                        if (!_glRenderer.Initialize(IntPtr.Zero, hWnd))
+                        {
+                            Console.WriteLine("[PhantomRender] OpenGL Renderer init failed, will not retry.");
+                            _glInitFailed = true;
+                            _glTargetWindow = IntPtr.Zero;
+                        }
+                        else
+                        {
+                            EnsureActiveBackendSelected(BackendKind.OpenGL);
+                        }
+                    }
+
+                    if (_glRenderer.IsInitialized)
+                    {
+                        _glRenderer.NewFrame();
+                        _glRenderer.Render();
+                    }
+                }
             };
             
             _glHook.Enable();
              Console.WriteLine("[PhantomRender] OpenGL Hook Enabled.");
+            return true;
         }
 
         [DllImport("user32.dll")]

@@ -69,11 +69,31 @@ namespace PhantomRender.ImGui.Renderers
 
         protected void ShutdownImGui()
         {
-             if (IsInitialized)
-             {
-                 ImGuiImplWin32.Shutdown();
-                 Hexa.NET.ImGui.ImGui.DestroyContext(Context);
-             }
+            // Cleanup must also work when initialization fails part-way through (IsInitialized may still be false).
+            try
+            {
+                if (!Context.IsNull)
+                {
+                    Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+                    ImGuiImplWin32.SetCurrentContext(Context);
+                }
+            }
+            catch { }
+
+            try { ImGuiImplWin32.Shutdown(); } catch { }
+
+            try
+            {
+                if (!Context.IsNull)
+                {
+                    Hexa.NET.ImGui.ImGui.DestroyContext(Context);
+                }
+            }
+            catch { }
+
+            Context = ImGuiContextPtr.Null;
+            IO = default;
+            _inputEmulator = null;
         }
 
         // --- OpenGL Version Detection ---
