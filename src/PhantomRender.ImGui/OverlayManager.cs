@@ -780,16 +780,113 @@ namespace PhantomRender.ImGui
         [DllImport("user32.dll")]
         private static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
+        [DllImport("kernel32.dll")]
+        private static extern IntPtr GetConsoleWindow();
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+
+        private delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsIconic(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetWindow(IntPtr hWnd, uint uCmd);
+
+        private const uint GW_OWNER = 4;
+
+        [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int Left;
+            public int Top;
+            public int Right;
+            public int Bottom;
+        }
+
+        private static IntPtr FindBestTopLevelWindowForCurrentProcess(IntPtr consoleWindow)
+        {
+            IntPtr best = IntPtr.Zero;
+            long bestArea = 0;
+
+            uint pid = 0;
+            try { pid = (uint)Process.GetCurrentProcess().Id; } catch { }
+            if (pid == 0) return IntPtr.Zero;
+
+            try
+            {
+                EnumWindows((hWnd, lParam) =>
+                {
+                    try
+                    {
+                        if (hWnd == IntPtr.Zero) return true;
+                        if (consoleWindow != IntPtr.Zero && hWnd == consoleWindow) return true;
+
+                        GetWindowThreadProcessId(hWnd, out uint windowPid);
+                        if (windowPid != pid) return true;
+
+                        // Skip owned (tool/child) windows; prefer the main game window.
+                        if (GetWindow(hWnd, GW_OWNER) != IntPtr.Zero) return true;
+
+                        if (!IsWindowVisible(hWnd)) return true;
+                        if (IsIconic(hWnd)) return true;
+
+                        if (!GetClientRect(hWnd, out RECT rc)) return true;
+                        int w = rc.Right - rc.Left;
+                        int h = rc.Bottom - rc.Top;
+                        if (w <= 0 || h <= 0) return true;
+
+                        long area = (long)w * h;
+                        if (area > bestArea)
+                        {
+                            bestArea = area;
+                            best = hWnd;
+                        }
+                    }
+                    catch
+                    {
+                        // Keep enumerating.
+                    }
+
+                    return true;
+                }, IntPtr.Zero);
+            }
+            catch
+            {
+                return IntPtr.Zero;
+            }
+
+            return best;
+        }
+
         private static IntPtr GetWindowHandleFailSafe()
         {
             try
             {
+                IntPtr consoleWindow = IntPtr.Zero;
+                try { consoleWindow = GetConsoleWindow(); } catch { }
+
                 var process = Process.GetCurrentProcess();
-                if (process.MainWindowHandle != IntPtr.Zero)
+                if (process.MainWindowHandle != IntPtr.Zero && process.MainWindowHandle != consoleWindow)
                     return process.MainWindowHandle;
+
+                IntPtr best = FindBestTopLevelWindowForCurrentProcess(consoleWindow);
+                if (best != IntPtr.Zero)
+                    return best;
                 
                 IntPtr fg = GetForegroundWindow();
-                if (fg != IntPtr.Zero)
+                if (fg != IntPtr.Zero && fg != consoleWindow)
                 {
                     GetWindowThreadProcessId(fg, out uint processId);
                     if (processId == process.Id)
