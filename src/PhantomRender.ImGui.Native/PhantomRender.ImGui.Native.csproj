@@ -7,6 +7,15 @@
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
     <OutputType>Library</OutputType> <!-- Or Exe depending on loader, but Library for strict DLL export -->
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <AutoPublishOnBuild Condition="'$(AutoPublishOnBuild)' == ''">true</AutoPublishOnBuild>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_AutoPublishRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_AutoPublishRuntimeIdentifier>
+    <_AutoPublishRuntimeIdentifier Condition="'$(_AutoPublishRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_AutoPublishRuntimeIdentifier>
+    <_AutoPublishRuntimeIdentifier Condition="'$(_AutoPublishRuntimeIdentifier)' == ''">win-x64</_AutoPublishRuntimeIdentifier>
+    <_AutoPublishDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\publish\$(_AutoPublishRuntimeIdentifier)\</_AutoPublishDir>
   </PropertyGroup>
 
   <ItemGroup>
@@ -21,5 +30,18 @@
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
     <PackageReference Include="HexaGen.Runtime" Version="1.1.24" />
   </ItemGroup>
+
+  <Target Name="AutoPublishAfterBuild"
+          AfterTargets="Build"
+          Condition="'$(AutoPublishOnBuild)' == 'true'
+                   and '$(DesignTimeBuild)' != 'true'
+                   and '$(IsCrossTargetingBuild)' != 'true'
+                   and '$(SkipAutoPublish)' != 'true'">
+    <Message Importance="High"
+             Text="Auto-publishing $(MSBuildProjectName) ($(Configuration), $(_AutoPublishRuntimeIdentifier)) to $(_AutoPublishDir)" />
+    <MSBuild Projects="$(MSBuildProjectFullPath)"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(_AutoPublishRuntimeIdentifier);SelfContained=true;PublishDir=$(_AutoPublishDir);SkipAutoPublish=true" />
+  </Target>
 
 </Project>
