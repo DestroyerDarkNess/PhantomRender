@@ -8,6 +8,7 @@ namespace PhantomRender.ImGui.Native
         private static readonly object _sync = new object();
         private static OverlayMenu _menu;
         private static NativeDefaultOverlayUi _defaultUi;
+        private static NativeInputEmulation _inputEmulation;
 
         public static void Initialize(OverlayMenu menu)
         {
@@ -24,6 +25,13 @@ namespace PhantomRender.ImGui.Native
                     _menu = menu;
                     Subscribe(_menu);
 
+                    try { _inputEmulation?.Dispose(); } catch { }
+                    _inputEmulation = null;
+                    if (_menu.Options.EnableDefaultInputEmulation)
+                    {
+                        _inputEmulation = new NativeInputEmulation(_menu);
+                    }
+
                     try { _defaultUi?.Dispose(); } catch { }
                     _defaultUi = new NativeDefaultOverlayUi(_menu);
                 }
@@ -38,6 +46,9 @@ namespace PhantomRender.ImGui.Native
             {
                 Unsubscribe(_menu);
                 _menu = null;
+
+                try { _inputEmulation?.Dispose(); } catch { }
+                _inputEmulation = null;
 
                 try { _defaultUi?.Dispose(); } catch { }
                 _defaultUi = null;

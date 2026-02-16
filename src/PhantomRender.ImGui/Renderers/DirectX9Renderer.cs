@@ -65,7 +65,7 @@ namespace PhantomRender.ImGui.Renderers
 
             ImGuiImplD3D9.NewFrame();
             ImGuiImplWin32.NewFrame();
-            _inputEmulator?.Update();
+            RaiseNewFrame();
             Hexa.NET.ImGui.ImGui.NewFrame();
         }
 

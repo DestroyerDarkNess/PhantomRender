@@ -100,8 +100,19 @@ namespace PhantomRender.ImGui.Renderers
             }
         }
 
-        // --- Input Emulation ---
-        protected PhantomRender.ImGui.Inputs.InputEmulator _inputEmulator;
+        protected void RaiseNewFrame()
+        {
+            try { _overlayMenu.RaiseNewFrame(this, GraphicsApi, _windowHandle); }
+            catch (Exception ex)
+            {
+                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                {
+                    throw;
+                }
+
+                try { _overlayMenu.ReportRuntimeError("NewFrame", ex); } catch { }
+            }
+        }
 
         protected unsafe void InitializeImGui(IntPtr windowHandle)
         {
@@ -131,10 +142,6 @@ namespace PhantomRender.ImGui.Renderers
             Console.WriteLine("[PhantomRender] Step 6: ImGuiImplWin32.Init...");
             Console.Out.Flush();
             ImGuiImplWin32.Init((void*)windowHandle);
-            
-            // Initialize Input Emulator
-            Console.WriteLine("[PhantomRender] Initializing Input Emulator...");
-            _inputEmulator = new PhantomRender.ImGui.Inputs.InputEmulator(IO, windowHandle);
 
             RaiseImGuiInitialized();
             
@@ -168,7 +175,6 @@ namespace PhantomRender.ImGui.Renderers
 
             Context = ImGuiContextPtr.Null;
             IO = default;
-            _inputEmulator = null;
         }
 
         // --- OpenGL Version Detection ---

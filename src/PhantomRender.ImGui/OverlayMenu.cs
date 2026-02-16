@@ -65,6 +65,7 @@ namespace PhantomRender.ImGui
 
         public event EventHandler<OverlayRendererInitializingEventArgs> InitializeRenderer;
         public event EventHandler<OverlayImGuiInitializedEventArgs> InitializeImGui;
+        public event EventHandler<OverlayNewFrameEventArgs> NewFrame;
         public event EventHandler<OverlayRenderEventArgs> Render;
         public event EventHandler<OverlayErrorEventArgs> OnError;
 
@@ -90,6 +91,14 @@ namespace PhantomRender.ImGui
                 Render,
                 new OverlayRenderEventArgs(renderer, api, windowHandle, frameCounter),
                 "Render");
+        }
+
+        internal void RaiseNewFrame(IOverlayRenderer renderer, GraphicsApi api, IntPtr windowHandle)
+        {
+            DispatchSafe(
+                NewFrame,
+                new OverlayNewFrameEventArgs(renderer, api, windowHandle),
+                "NewFrame");
         }
 
         internal void ReportRuntimeError(string stage, Exception exception)

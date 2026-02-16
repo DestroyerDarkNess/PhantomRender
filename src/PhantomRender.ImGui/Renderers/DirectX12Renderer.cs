@@ -400,7 +400,7 @@ namespace PhantomRender.ImGui.Renderers
 
             ImGuiImplD3D12.NewFrame();
             ImGuiImplWin32.NewFrame();
-            _inputEmulator?.Update();
+            RaiseNewFrame();
             Hexa.NET.ImGui.ImGui.NewFrame();
             _frameStarted = true;
         }

@@ -48,6 +48,20 @@ namespace PhantomRender.ImGui
         public ulong FrameCounter { get; }
     }
 
+    public sealed class OverlayNewFrameEventArgs : EventArgs
+    {
+        public OverlayNewFrameEventArgs(IOverlayRenderer renderer, Renderers.GraphicsApi api, IntPtr windowHandle)
+        {
+            Renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
+            Api = api;
+            WindowHandle = windowHandle;
+        }
+
+        public IOverlayRenderer Renderer { get; }
+        public Renderers.GraphicsApi Api { get; }
+        public IntPtr WindowHandle { get; }
+    }
+
     public sealed class OverlayErrorEventArgs : EventArgs
     {
         public OverlayErrorEventArgs(string stage, Exception exception)
@@ -60,4 +74,3 @@ namespace PhantomRender.ImGui
         public Exception Exception { get; }
     }
 }
-
