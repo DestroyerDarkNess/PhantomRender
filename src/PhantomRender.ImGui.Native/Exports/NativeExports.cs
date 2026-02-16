@@ -5,15 +5,15 @@ using System.Runtime.CompilerServices;
 
 namespace PhantomRender.ImGui.Native
 {
-    public static class NativeExports
+    public static class Exports
     {
         private const uint DLL_PROCESS_DETACH = 0;
         private const uint DLL_PROCESS_ATTACH = 1;
         
         private static IntPtr _hModule;
-        private static readonly NativeRuntimeHost _runtimeHost = new NativeRuntimeHost(
-            new NativeDependencyLoader(),
-            new NativeOverlayBootstrapAdapter());
+        private static readonly RuntimeHost _runtimeHost = new RuntimeHost(
+            new DependencyLoader(),
+            new OverlayBootstrapAdapter());
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static unsafe bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)

@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 
 namespace PhantomRender.ImGui.Native
 {
-    internal sealed class NativeDependencyLoader : INativeDependencyLoader
+    internal sealed class DependencyLoader : IDependencyLoader
     {
         public unsafe void LoadDependencies(IntPtr hModule)
         {
@@ -56,4 +56,3 @@ namespace PhantomRender.ImGui.Native
         private static extern unsafe uint GetModuleFileName(IntPtr hModule, char* lpFilename, uint nSize);
     }
 }
-

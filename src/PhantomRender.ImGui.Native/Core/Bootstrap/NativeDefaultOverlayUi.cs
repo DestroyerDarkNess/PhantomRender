@@ -7,12 +7,12 @@ using PhantomRender.ImGui.Renderers;
 
 namespace PhantomRender.ImGui.Native
 {
-    internal sealed class NativeDefaultOverlayUi : IDisposable
+    internal sealed class DefaultOverlayUi : IDisposable
     {
         private readonly OverlayMenu _menu;
         private bool _disposed;
 
-        public NativeDefaultOverlayUi(OverlayMenu menu)
+        public DefaultOverlayUi(OverlayMenu menu)
         {
             _menu = menu ?? throw new ArgumentNullException(nameof(menu));
             _menu.Render += OnRender;

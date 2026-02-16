@@ -32,13 +32,14 @@ namespace PhantomRender.ImGui
                     return;
                 }
 
-                Type nativeBootstrapType = Type.GetType("PhantomRender.ImGui.Native.NativeOverlayBootstrap, PhantomRender.ImGui.Native", throwOnError: false);
+                Type nativeBootstrapType = Type.GetType("PhantomRender.ImGui.Native.OverlayBootstrap, PhantomRender.ImGui.Native", throwOnError: false)
+                    ?? Type.GetType("PhantomRender.ImGui.Native.NativeOverlayBootstrap, PhantomRender.ImGui.Native", throwOnError: false);
                 if (nativeBootstrapType != null)
                 {
                     MethodInfo nativeInit = nativeBootstrapType.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(OverlayMenu) }, null);
                     if (nativeInit == null)
                     {
-                        throw new MissingMethodException("Initialize(OverlayMenu) was not found on NativeOverlayBootstrap.");
+                        throw new MissingMethodException("Initialize(OverlayMenu) was not found on OverlayBootstrap.");
                     }
 
                     nativeInit.Invoke(null, new object[] { overlayMenu });

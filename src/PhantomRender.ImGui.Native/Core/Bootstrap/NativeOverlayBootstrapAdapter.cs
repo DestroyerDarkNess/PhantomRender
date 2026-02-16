@@ -2,17 +2,16 @@ using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Native
 {
-    internal sealed class NativeOverlayBootstrapAdapter : INativeOverlayBootstrap
+    internal sealed class OverlayBootstrapAdapter : IOverlayBootstrap
     {
         public void Initialize(OverlayMenu menu)
         {
-            NativeOverlayBootstrap.Initialize(menu);
+            OverlayBootstrap.Initialize(menu);
         }
 
         public void Shutdown()
         {
-            NativeOverlayBootstrap.Shutdown();
+            OverlayBootstrap.Shutdown();
         }
     }
 }
-

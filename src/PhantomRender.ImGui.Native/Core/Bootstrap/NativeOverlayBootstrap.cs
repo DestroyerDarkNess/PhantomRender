@@ -3,12 +3,12 @@ using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Native
 {
-    public static class NativeOverlayBootstrap
+    public static class OverlayBootstrap
     {
         private static readonly object _sync = new object();
         private static OverlayMenu _menu;
-        private static NativeDefaultOverlayUi _defaultUi;
-        private static NativeInputEmulation _inputEmulation;
+        private static DefaultOverlayUi _defaultUi;
+        private static InputEmulation _inputEmulation;
 
         public static void Initialize(OverlayMenu menu)
         {
@@ -29,11 +29,11 @@ namespace PhantomRender.ImGui.Native
                     _inputEmulation = null;
                     if (_menu.Options.EnableDefaultInputEmulation)
                     {
-                        _inputEmulation = new NativeInputEmulation(_menu);
+                        _inputEmulation = new InputEmulation(_menu);
                     }
 
                     try { _defaultUi?.Dispose(); } catch { }
-                    _defaultUi = new NativeDefaultOverlayUi(_menu);
+                    _defaultUi = new DefaultOverlayUi(_menu);
                 }
 
                 OverlayManager.Initialize(_menu);

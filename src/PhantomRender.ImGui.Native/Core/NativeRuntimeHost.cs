@@ -3,12 +3,12 @@ using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Native
 {
-    internal sealed class NativeRuntimeHost
+    internal sealed class RuntimeHost
     {
-        private readonly INativeDependencyLoader _dependencyLoader;
-        private readonly INativeOverlayBootstrap _overlayBootstrap;
+        private readonly IDependencyLoader _dependencyLoader;
+        private readonly IOverlayBootstrap _overlayBootstrap;
 
-        public NativeRuntimeHost(INativeDependencyLoader dependencyLoader, INativeOverlayBootstrap overlayBootstrap)
+        public RuntimeHost(IDependencyLoader dependencyLoader, IOverlayBootstrap overlayBootstrap)
         {
             _dependencyLoader = dependencyLoader ?? throw new ArgumentNullException(nameof(dependencyLoader));
             _overlayBootstrap = overlayBootstrap ?? throw new ArgumentNullException(nameof(overlayBootstrap));
