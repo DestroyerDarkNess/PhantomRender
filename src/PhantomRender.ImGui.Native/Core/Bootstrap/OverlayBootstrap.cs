@@ -28,6 +28,8 @@ namespace PhantomRender.ImGui.Native
 
                     try { _defaultUi?.Dispose(); } catch { }
                     _defaultUi = new DefaultOverlayUi(_menu);
+                    Console.WriteLine("[PhantomRender] Default overlay UI starts hidden. Press Insert to toggle visibility.");
+                    Console.Out.Flush();
 
                     try { _inputEmulation?.Dispose(); } catch { }
                     _inputEmulation = new InputEmulation(_menu, IsMenuVisible, ToggleMenuVisibility);

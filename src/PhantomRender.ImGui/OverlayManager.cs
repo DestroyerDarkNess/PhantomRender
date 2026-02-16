@@ -67,6 +67,7 @@ namespace PhantomRender.ImGui
         private static DirectX10Hook _dx10Hook;
         private static DirectX10Renderer _dx10Renderer;
         private static IntPtr _dxgiTargetWindow;
+        private static long _dxgiPresentCounter;
 
         public static void Initialize()
         {
@@ -618,6 +619,19 @@ namespace PhantomRender.ImGui
                 {
                     lock (_renderLock)
                     {
+                        if (!ShouldRunBackendCallback(BackendKind.DXGI))
+                        {
+                            return;
+                        }
+
+                        if (!IsDxgiSwapChainRelevant(swapChain))
+                        {
+                            return;
+                        }
+
+                        Console.WriteLine($"[PhantomRender] DXGI Before ResizeBuffers size={width}x{height} buffers={bufferCount} fmt={newFormat} flags=0x{swapChainFlags:X}");
+                        Console.Out.Flush();
+
                         try { _dx11Renderer?.OnLostDevice(); } catch { }
                         try { _dx10Renderer?.OnLostDevice(); } catch { }
 #if NET5_0_OR_GREATER
@@ -630,6 +644,27 @@ namespace PhantomRender.ImGui
                 {
                     lock (_renderLock)
                     {
+                        if (!ShouldRunBackendCallback(BackendKind.DXGI))
+                        {
+                            return;
+                        }
+
+                        if (!IsDxgiSwapChainRelevant(swapChain))
+                        {
+                            return;
+                        }
+
+                        if (hr < 0)
+                        {
+                            Console.WriteLine($"[PhantomRender] DXGI ResizeBuffers failed hr=0x{hr:X8} size={width}x{height} buffers={bufferCount} fmt={newFormat} flags=0x{swapChainFlags:X}");
+                            Console.Out.Flush();
+                        }
+                        else
+                        {
+                            Console.WriteLine($"[PhantomRender] DXGI After ResizeBuffers hr=0x{hr:X8} size={width}x{height} buffers={bufferCount}");
+                            Console.Out.Flush();
+                        }
+
                         try { _dx11Renderer?.OnResetDevice(); } catch { }
                         try { _dx10Renderer?.OnResetDevice(); } catch { }
 #if NET5_0_OR_GREATER
@@ -654,6 +689,13 @@ namespace PhantomRender.ImGui
                         if (!ShouldRunBackendCallback(BackendKind.DXGI))
                         {
                             return;
+                        }
+
+                        long presentCount = Interlocked.Increment(ref _dxgiPresentCounter);
+                        if ((presentCount % 1800) == 0)
+                        {
+                            Console.WriteLine($"[PhantomRender] DXGI Present heartbeat #{presentCount}");
+                            Console.Out.Flush();
                         }
 
                         // Filter out secondary swapchains (common in engines that host overlays/webviews inside the process).
@@ -1016,6 +1058,34 @@ namespace PhantomRender.ImGui
             IntPtr fallback = GetWindowHandleFailSafe();
             Console.WriteLine($"[PhantomRender] DXGI: Using fail-safe window: {fallback}");
             return fallback;
+        }
+
+        private static bool IsDxgiSwapChainRelevant(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero)
+            {
+                return true;
+            }
+
+            IntPtr targetWindow = _dxgiTargetWindow;
+            if (targetWindow == IntPtr.Zero || _dx10Hook == null)
+            {
+                return true;
+            }
+
+            try
+            {
+                if (_dx10Hook.TryGetOutputWindow(swapChain, out IntPtr swapChainWindow) && swapChainWindow != IntPtr.Zero)
+                {
+                    return swapChainWindow == targetWindow;
+                }
+            }
+            catch
+            {
+                // Unknown swapchain metadata: don't block lifecycle callbacks.
+            }
+
+            return true;
         }
     }
 }

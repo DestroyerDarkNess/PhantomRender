@@ -15,11 +15,8 @@ namespace PhantomRender.ImGui.Renderers
         private const int VTABLE_ID3D11Device_GetImmediateContext = 40;
         private const int VTABLE_IUnknown_QueryInterface = 0;
         private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargets = 33;
-        private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews = 34;
         private const int VTABLE_ID3D11DeviceContext_OMGetRenderTargets = 89;
         private const int VTABLE_ID3D11Multithread_SetMultithreadProtected = 5;
-
-        private const uint D3D11_KEEP_UNORDERED_ACCESS_VIEWS = 0xFFFFFFFF;
 
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
         private static readonly Guid IID_ID3D11Texture2D = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
@@ -47,17 +44,6 @@ namespace PhantomRender.ImGui.Renderers
         private unsafe delegate void OMSetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, IntPtr* renderTargetViews, IntPtr depthStencilView);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private unsafe delegate void OMSetRenderTargetsAndUnorderedAccessViewsDelegate(
-            IntPtr deviceContext,
-            uint numRTVs,
-            IntPtr* renderTargetViews,
-            IntPtr depthStencilView,
-            uint uavStartSlot,
-            uint numUAVs,
-            IntPtr* unorderedAccessViews,
-            uint* uavInitialCounts);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int SetMultithreadProtectedDelegate(IntPtr multithread, int bMultithreadProtected);
 
         private IntPtr _deviceContext;
@@ -66,7 +52,6 @@ namespace PhantomRender.ImGui.Renderers
         private IntPtr _lastSwapChain;
         private ulong _frameCounter;
         private bool _loggedRenderTargetReady;
-        private bool _loggedStateBackupFailure;
         private bool _loggedBackendReinit;
         private bool _loggedMultithreadProtectEnabled;
         private bool _loggedMultithreadProtectUnavailable;
@@ -179,7 +164,14 @@ namespace PhantomRender.ImGui.Renderers
                 return;
             }
 
-            if (!EnsureBackendContext(_lastSwapChain))
+            Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
+            _frameCounter++;
+            RenderMenuFrame(_frameCounter);
+
+            RaiseOverlayRender();
+            Hexa.NET.ImGui.ImGui.Render();
+            var drawData = Hexa.NET.ImGui.ImGui.GetDrawData();
+            if (drawData.CmdListsCount <= 0 || drawData.TotalVtxCount <= 0)
             {
                 return;
             }
@@ -189,52 +181,12 @@ namespace PhantomRender.ImGui.Renderers
                 return;
             }
 
-            const uint OM_MAX_RENDER_TARGETS = 8; // D3D11_SIMULTANEOUS_RENDER_TARGET_COUNT
-            IntPtr* previousRenderTargetViews = stackalloc IntPtr[(int)OM_MAX_RENDER_TARGETS];
-            for (int i = 0; i < OM_MAX_RENDER_TARGETS; i++)
+            if (!BindOverlayRenderTarget())
             {
-                previousRenderTargetViews[i] = IntPtr.Zero;
-            }
-
-            IntPtr previousDepthStencilView = IntPtr.Zero;
-            bool hasPreviousState = TryBackupOutputMergerState(previousRenderTargetViews, OM_MAX_RENDER_TARGETS, out previousDepthStencilView);
-            if (!hasPreviousState)
-            {
-                if (!_loggedStateBackupFailure)
-                {
-                    Console.WriteLine("[PhantomRender] DirectX11Renderer: OMGetRenderTargets failed, skipping overlay render.");
-                    Console.Out.Flush();
-                    _loggedStateBackupFailure = true;
-                }
                 return;
             }
 
-            try
-            {
-                if (!BindOverlayRenderTarget())
-                {
-                    return;
-                }
-
-                Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
-                _frameCounter++;
-                RenderMenuFrame(_frameCounter);
-
-                RaiseOverlayRender();
-                Hexa.NET.ImGui.ImGui.Render();
-                var drawData = Hexa.NET.ImGui.ImGui.GetDrawData();
-
-                ImGuiImplD3D11.RenderDrawData(drawData);
-            }
-            finally
-            {
-                RestoreOutputMergerState(previousRenderTargetViews, OM_MAX_RENDER_TARGETS, previousDepthStencilView);
-                for (int i = 0; i < OM_MAX_RENDER_TARGETS; i++)
-                {
-                    ReleaseComObject(previousRenderTargetViews[i]);
-                }
-                ReleaseComObject(previousDepthStencilView);
-            }
+            ImGuiImplD3D11.RenderDrawData(drawData);
         }
 
         private unsafe bool EnsureBackendContext(IntPtr swapChain)
@@ -309,7 +261,6 @@ namespace PhantomRender.ImGui.Renderers
 
                 // The render target (and OM restore behavior) is tied to the old context/device state.
                 ReleaseRenderTarget();
-                _loggedStateBackupFailure = false;
 
                 if (!_loggedBackendReinit)
                 {
@@ -344,8 +295,8 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (IsInitialized)
             {
+                // For DX11 resize, releasing and recreating RTV is enough.
                 ReleaseRenderTarget();
-                ImGuiImplD3D11.InvalidateDeviceObjects();
             }
         }
 
@@ -353,8 +304,8 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (IsInitialized)
             {
+                // Device objects are retained; RTV will be recreated lazily on next render.
                 ReleaseRenderTarget();
-                ImGuiImplD3D11.CreateDeviceObjects();
             }
         }
 
@@ -620,15 +571,6 @@ namespace PhantomRender.ImGui.Renderers
             {
                 IntPtr rtv = _renderTargetView;
 
-                // OMSetRenderTargets can clear OM UAV bindings in some engines. Prefer the UAV-aware variant and keep UAVs.
-                IntPtr omSetRTandUavAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
-                if (omSetRTandUavAddr != IntPtr.Zero)
-                {
-                    var omSetRTandUav = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsAndUnorderedAccessViewsDelegate>(omSetRTandUavAddr);
-                    omSetRTandUav(_deviceContext, 1, &rtv, IntPtr.Zero, 0, D3D11_KEEP_UNORDERED_ACCESS_VIEWS, null, null);
-                    return true;
-                }
-
                 IntPtr omSetRenderTargetsAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargets);
                 if (omSetRenderTargetsAddr == IntPtr.Zero)
                 {
@@ -656,14 +598,6 @@ namespace PhantomRender.ImGui.Renderers
 
             try
             {
-                IntPtr omSetRTandUavAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews);
-                if (omSetRTandUavAddr != IntPtr.Zero)
-                {
-                    var omSetRTandUav = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsAndUnorderedAccessViewsDelegate>(omSetRTandUavAddr);
-                    omSetRTandUav(_deviceContext, numViews, renderTargetViews, depthStencilView, 0, D3D11_KEEP_UNORDERED_ACCESS_VIEWS, null, null);
-                    return;
-                }
-
                 IntPtr omSetRenderTargetsAddr = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DeviceContext_OMSetRenderTargets);
                 if (omSetRenderTargetsAddr == IntPtr.Zero)
                 {

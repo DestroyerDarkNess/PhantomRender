@@ -9,10 +9,10 @@ namespace PhantomRender.ImGui.Native.UI
     internal sealed class DefaultOverlayUi : IDisposable
     {
         private readonly OverlayMenu _menu;
-        private bool _visible = true;
+        private bool _visible = false;
         private bool _showMainMenuBar = true;
         private bool _showStatusWindow = true;
-        private bool _showDemoWindow = true;
+        private bool _showDemoWindow;
         private bool _showMetricsWindow;
         private bool _showStyleEditor;
         private bool _disposed;
