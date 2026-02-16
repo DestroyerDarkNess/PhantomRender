@@ -14,20 +14,16 @@ namespace PhantomRender.ImGui.Native
             _overlayBootstrap = overlayBootstrap ?? throw new ArgumentNullException(nameof(overlayBootstrap));
         }
 
-        public void Initialize(IntPtr hModule, Action allocConsole)
+        public void Initialize(IntPtr hModule)
         {
             try
             {
-                allocConsole?.Invoke();
-
                 // Mirror all console output into a per-game log file (e.g. "witcher3.log")
                 // so we still have the trace when the game exits/crashes.
                 ConsoleFileLog.Install(hModule);
 
                 // Best-effort crash logging (managed unhandled + native SEH).
                 CrashHandlers.Install();
-
-                Console.WriteLine("[PhantomRender] Console Allocated!");
 
                 _dependencyLoader.LoadDependencies(hModule);
 
@@ -57,4 +53,3 @@ namespace PhantomRender.ImGui.Native
         }
     }
 }
-

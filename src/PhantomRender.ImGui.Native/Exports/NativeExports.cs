@@ -40,18 +40,9 @@ namespace PhantomRender.ImGui.Native
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
         private static uint InitializeThreadWrapper(IntPtr lpParam)
         {
-            _runtimeHost.Initialize(_hModule, AllocConsoleSafe);
+            _runtimeHost.Initialize(_hModule);
             return 0;
         }
-
-        private static void AllocConsoleSafe()
-        {
-            try { AllocConsole(); } catch { }
-        }
-
-        [DllImport("kernel32.dll", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool AllocConsole();
 
         [DllImport("kernel32.dll")]
         private static extern unsafe IntPtr CreateThread(IntPtr lpThreadAttributes, IntPtr dwStackSize, delegate* unmanaged[Stdcall]<IntPtr, uint> lpStartAddress, IntPtr lpParameter, uint dwCreationFlags, IntPtr lpThreadId);
