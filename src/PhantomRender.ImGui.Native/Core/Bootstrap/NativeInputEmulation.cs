@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using PhantomRender.ImGui;
+using PhantomRender.ImGui.Inputs;
 using PhantomRender.ImGui.Renderers;
 
 namespace PhantomRender.ImGui.Native

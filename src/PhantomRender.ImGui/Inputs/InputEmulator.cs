@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Hexa.NET.ImGui;
 
-namespace PhantomRender.ImGui.Native
+namespace PhantomRender.ImGui.Inputs
 {
     public class InputEmulator
     {
