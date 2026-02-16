@@ -4,10 +4,9 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Hooks.Graphics.OpenGL;
-using PhantomRender.ImGui;
 using PhantomRender.ImGui.Renderers;
 
-namespace PhantomRender.ImGui.Native
+namespace PhantomRender.ImGui
 {
     public static class OverlayManager
     {
