@@ -10,6 +10,9 @@
 <p align="center">
   Universal graphics hook + ImGui injected runtime for Windows games (DX9/DXGI/OpenGL).
 </p>
+<p align="center">
+  <a href="./Games.md">Games Tested Gallery</a>
+</p>
 
 [![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
 
