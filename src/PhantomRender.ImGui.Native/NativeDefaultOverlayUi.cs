@@ -36,22 +36,8 @@ namespace PhantomRender.ImGui.Native
                 return;
             }
 
-            try
-            {
-                DrawDefaultUi(e.Api, e.WindowHandle, e.FrameCounter);
-            }
-            catch (Exception ex)
-            {
-                try
-                {
-                    Console.WriteLine($"[PhantomRender] Native default UI draw error: {ex}");
-                    Console.Out.Flush();
-                }
-                catch
-                {
-                    // Ignore logging failures.
-                }
-            }
+            // Let OverlayMenu.DispatchSafe handle callback exceptions and route them to OnError.
+            DrawDefaultUi(e.Api, e.WindowHandle, e.FrameCounter);
         }
 
         private void DrawDefaultUi(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
@@ -178,4 +164,3 @@ namespace PhantomRender.ImGui.Native
         }
     }
 }
-

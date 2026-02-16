@@ -12,7 +12,6 @@ namespace PhantomRender.ImGui.Native
         private const uint DLL_PROCESS_ATTACH = 1;
         
         private static IntPtr _hModule;
-        private static NativeDefaultOverlayUi _defaultOverlayUi;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static unsafe bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
@@ -30,8 +29,7 @@ namespace PhantomRender.ImGui.Native
                     }
                     break;
                 case DLL_PROCESS_DETACH:
-                    try { _defaultOverlayUi?.Dispose(); } catch { }
-                    _defaultOverlayUi = null;
+                    try { NativeOverlayBootstrap.Shutdown(); } catch { }
                     break;
             }
             return true;
@@ -65,9 +63,7 @@ namespace PhantomRender.ImGui.Native
                 Console.WriteLine("[PhantomRender] Initializing OverlayManager...");
 
                 OverlayMenu menu = OverlayMenu.Default;
-                _defaultOverlayUi?.Dispose();
-                _defaultOverlayUi = new NativeDefaultOverlayUi(menu);
-                OverlayManager.Initialize(menu);
+                NativeOverlayBootstrap.Initialize(menu);
                 
                 Console.WriteLine("[PhantomRender] OverlayManager Initialized.");
             }

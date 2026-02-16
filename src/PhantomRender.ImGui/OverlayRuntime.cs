@@ -1,4 +1,5 @@
 using System;
+using System.Reflection;
 
 namespace PhantomRender.ImGui
 {
@@ -31,7 +32,21 @@ namespace PhantomRender.ImGui
                     return;
                 }
 
-                OverlayManager.Initialize(overlayMenu);
+                Type nativeBootstrapType = Type.GetType("PhantomRender.ImGui.Native.NativeOverlayBootstrap, PhantomRender.ImGui.Native", throwOnError: false);
+                if (nativeBootstrapType != null)
+                {
+                    MethodInfo nativeInit = nativeBootstrapType.GetMethod("Initialize", BindingFlags.Public | BindingFlags.Static, null, new[] { typeof(OverlayMenu) }, null);
+                    if (nativeInit == null)
+                    {
+                        throw new MissingMethodException("Initialize(OverlayMenu) was not found on NativeOverlayBootstrap.");
+                    }
+
+                    nativeInit.Invoke(null, new object[] { overlayMenu });
+                }
+                else
+                {
+                    OverlayManager.Initialize(overlayMenu);
+                }
 
                 _initialized = true;
             }
