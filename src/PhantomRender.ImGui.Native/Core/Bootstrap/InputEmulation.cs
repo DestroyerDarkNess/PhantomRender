@@ -60,8 +60,18 @@ namespace PhantomRender.ImGui.Native
 
             if (_inputsByRenderer.TryGetValue(e.Renderer, out InputImguiEmu input))
             {
-                input.Update();
-                e.Renderer.IO.MouseDrawCursor = _isMenuVisible();
+                bool menuVisible = _isMenuVisible();
+                if (menuVisible)
+                {
+                    input.Update();
+                }
+                else
+                {
+                    // Keep toggle hotkeys alive without pushing full keyboard/mouse events into ImGui each frame.
+                    input.UpdateHotkeysOnly();
+                }
+
+                e.Renderer.IO.MouseDrawCursor = menuVisible;
             }
         }
     }

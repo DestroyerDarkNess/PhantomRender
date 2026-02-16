@@ -13,14 +13,17 @@ namespace PhantomRender.ImGui.Renderers
         private const int VTABLE_IDXGISwapChain_GetBuffer = 9;
         private const int VTABLE_ID3D11Device_CreateRenderTargetView = 9;
         private const int VTABLE_ID3D11Device_GetImmediateContext = 40;
+        private const int VTABLE_IUnknown_QueryInterface = 0;
         private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargets = 33;
         private const int VTABLE_ID3D11DeviceContext_OMSetRenderTargetsAndUnorderedAccessViews = 34;
         private const int VTABLE_ID3D11DeviceContext_OMGetRenderTargets = 89;
+        private const int VTABLE_ID3D11Multithread_SetMultithreadProtected = 5;
 
         private const uint D3D11_KEEP_UNORDERED_ACCESS_VIEWS = 0xFFFFFFFF;
 
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
         private static readonly Guid IID_ID3D11Texture2D = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
+        private static readonly Guid IID_ID3D11Multithread = new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0");
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void GetImmediateContextDelegate(IntPtr device, out IntPtr ppImmediateContext);
@@ -33,6 +36,9 @@ namespace PhantomRender.ImGui.Renderers
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int CreateRenderTargetViewDelegate(IntPtr device, IntPtr resource, IntPtr desc, out IntPtr renderTargetView);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int QueryInterfaceDelegate(IntPtr instance, ref Guid riid, out IntPtr ppvObject);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private unsafe delegate void OMGetRenderTargetsDelegate(IntPtr deviceContext, uint numViews, IntPtr* renderTargetViews, out IntPtr depthStencilView);
@@ -51,6 +57,9 @@ namespace PhantomRender.ImGui.Renderers
             IntPtr* unorderedAccessViews,
             uint* uavInitialCounts);
 
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int SetMultithreadProtectedDelegate(IntPtr multithread, int bMultithreadProtected);
+
         private IntPtr _deviceContext;
         private IntPtr _renderTargetView;
         private IntPtr _swapChainForRenderTarget;
@@ -59,6 +68,8 @@ namespace PhantomRender.ImGui.Renderers
         private bool _loggedRenderTargetReady;
         private bool _loggedStateBackupFailure;
         private bool _loggedBackendReinit;
+        private bool _loggedMultithreadProtectEnabled;
+        private bool _loggedMultithreadProtectUnavailable;
 
         public DirectX11Renderer(OverlayMenu overlayMenu)
             : base(overlayMenu, GraphicsApi.DirectX11)
@@ -99,6 +110,22 @@ namespace PhantomRender.ImGui.Renderers
                 }
 
                 _deviceContext = deviceContext;
+
+                if (TryEnableDeviceContextMultithreadProtection(_deviceContext))
+                {
+                    if (!_loggedMultithreadProtectEnabled)
+                    {
+                        Console.WriteLine("[PhantomRender] DirectX11Renderer: Enabled ID3D11Multithread protection.");
+                        Console.Out.Flush();
+                        _loggedMultithreadProtectEnabled = true;
+                    }
+                }
+                else if (!_loggedMultithreadProtectUnavailable)
+                {
+                    Console.WriteLine("[PhantomRender] DirectX11Renderer: ID3D11Multithread unavailable; continuing without protection.");
+                    Console.Out.Flush();
+                    _loggedMultithreadProtectUnavailable = true;
+                }
 
                 IsInitialized = true;
                 Console.WriteLine("[PhantomRender] DirectX11Renderer: Initialized Successfully!");
@@ -264,6 +291,22 @@ namespace PhantomRender.ImGui.Renderers
                 _deviceContext = newContext;
                 newContext = IntPtr.Zero; // now owned by _deviceContext
 
+                if (TryEnableDeviceContextMultithreadProtection(_deviceContext))
+                {
+                    if (!_loggedMultithreadProtectEnabled)
+                    {
+                        Console.WriteLine("[PhantomRender] DirectX11Renderer: Enabled ID3D11Multithread protection.");
+                        Console.Out.Flush();
+                        _loggedMultithreadProtectEnabled = true;
+                    }
+                }
+                else if (!_loggedMultithreadProtectUnavailable)
+                {
+                    Console.WriteLine("[PhantomRender] DirectX11Renderer: ID3D11Multithread unavailable; continuing without protection.");
+                    Console.Out.Flush();
+                    _loggedMultithreadProtectUnavailable = true;
+                }
+
                 // The render target (and OM restore behavior) is tied to the old context/device state.
                 ReleaseRenderTarget();
                 _loggedStateBackupFailure = false;
@@ -374,6 +417,50 @@ namespace PhantomRender.ImGui.Renderers
             if (pointer != IntPtr.Zero)
             {
                 Marshal.Release(pointer);
+            }
+        }
+
+        private static bool TryEnableDeviceContextMultithreadProtection(IntPtr deviceContext)
+        {
+            if (deviceContext == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            IntPtr multithread = IntPtr.Zero;
+            try
+            {
+                IntPtr queryInterfaceAddr = GetVTableFunctionAddress(deviceContext, VTABLE_IUnknown_QueryInterface);
+                if (queryInterfaceAddr == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                var queryInterface = Marshal.GetDelegateForFunctionPointer<QueryInterfaceDelegate>(queryInterfaceAddr);
+                Guid iid = IID_ID3D11Multithread;
+                int hr = queryInterface(deviceContext, ref iid, out multithread);
+                if (hr < 0 || multithread == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                IntPtr setMultithreadProtectedAddr = GetVTableFunctionAddress(multithread, VTABLE_ID3D11Multithread_SetMultithreadProtected);
+                if (setMultithreadProtectedAddr == IntPtr.Zero)
+                {
+                    return false;
+                }
+
+                var setMultithreadProtected = Marshal.GetDelegateForFunctionPointer<SetMultithreadProtectedDelegate>(setMultithreadProtectedAddr);
+                setMultithreadProtected(multithread, 1);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+            finally
+            {
+                ReleaseComObject(multithread);
             }
         }
 

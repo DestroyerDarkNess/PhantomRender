@@ -36,6 +36,9 @@ namespace PhantomRender.Core.Hooks.Graphics
         private Present1Delegate _originalPresent1;
         private ResizeBuffersDelegate _originalResizeBuffers;
 
+        [ThreadStatic]
+        private static int _presentHookDepth;
+
         public DirectX10Hook(IntPtr swapChainAddress)
         {
             _hookEngine = new HookEngine();
@@ -65,30 +68,57 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private int PresentHook(IntPtr swapChain, uint syncInterval, uint flags)
         {
+            if (_presentHookDepth > 0)
+            {
+                return _originalPresent(swapChain, syncInterval, flags);
+            }
+
+            _presentHookDepth++;
             try
             {
-                OnPresent?.Invoke(swapChain, syncInterval, flags);
+                try
+                {
+                    OnPresent?.Invoke(swapChain, syncInterval, flags);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DX10 Present error: {ex.Message}");
+                }
+
+                return _originalPresent(swapChain, syncInterval, flags);
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"[PhantomRender] DX10 Present error: {ex.Message}");
+                _presentHookDepth--;
             }
-            return _originalPresent(swapChain, syncInterval, flags);
         }
 
         private int Present1Hook(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters)
         {
-            try
+            if (_presentHookDepth > 0)
             {
-                OnPresent?.Invoke(swapChain, syncInterval, flags);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] DXGI Present1 error: {ex.Message}");
+                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
             }
 
-            // If Present1 is hooked, _originalPresent1 is always non-null.
-            return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
+            _presentHookDepth++;
+            try
+            {
+                try
+                {
+                    OnPresent?.Invoke(swapChain, syncInterval, flags);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DXGI Present1 error: {ex.Message}");
+                }
+
+                // If Present1 is hooked, _originalPresent1 is always non-null.
+                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
+            }
+            finally
+            {
+                _presentHookDepth--;
+            }
         }
 
         private void TryHookPresent1(IntPtr swapChain)
@@ -164,7 +194,7 @@ namespace PhantomRender.Core.Hooks.Graphics
             // HRESULT GetDevice(REFIID riid, void **ppDevice)
             var getDevice = Marshal.GetDelegateForFunctionPointer<GetDeviceDelegate>(getDeviceAddr);
 
-            Guid iid = new Guid("9B7E4E00-342C-4106-A19F-4F2704F689F0"); // IID_ID3D10Device
+            Guid iid = new Guid("9B7E4C0F-342C-4106-A19F-4F2704F689F0"); // IID_ID3D10Device
             IntPtr device;
             if (getDevice(swapChain, ref iid, out device) == 0) // S_OK
             {

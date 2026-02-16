@@ -640,8 +640,17 @@ namespace PhantomRender.ImGui
 
                 _dx10Hook.OnPresent += (swapChain, syncInterval, flags) =>
                 {
-                    lock (_renderLock)
+                    bool lockTaken = false;
+                    try
                     {
+                        if (!Monitor.TryEnter(_renderLock))
+                        {
+                            // Never block the game's Present path due to overlay contention.
+                            return;
+                        }
+
+                        lockTaken = true;
+
                         if (!ShouldRunBackendCallback(BackendKind.DXGI))
                         {
                             return;
@@ -651,14 +660,14 @@ namespace PhantomRender.ImGui
                         IntPtr swapChainWindow = IntPtr.Zero;
                         try { _dx10Hook.TryGetOutputWindow(swapChain, out swapChainWindow); } catch { }
 
-                        IntPtr expectedWindow = GetWindowHandleFailSafe();
-                        if (swapChainWindow == IntPtr.Zero)
-                        {
-                            swapChainWindow = expectedWindow;
-                        }
-
                         if (_dxgiTargetWindow == IntPtr.Zero)
                         {
+                            IntPtr expectedWindow = GetWindowHandleFailSafe();
+                            if (swapChainWindow == IntPtr.Zero)
+                            {
+                                swapChainWindow = expectedWindow;
+                            }
+
                             // If we know the main window, only lock onto swapchains that present to it.
                             if (expectedWindow != IntPtr.Zero && swapChainWindow != IntPtr.Zero && swapChainWindow != expectedWindow)
                             {
@@ -666,10 +675,19 @@ namespace PhantomRender.ImGui
                             }
 
                             _dxgiTargetWindow = swapChainWindow != IntPtr.Zero ? swapChainWindow : expectedWindow;
+                            if (_dxgiTargetWindow == IntPtr.Zero)
+                            {
+                                // Delay renderer init until we have a reliable target window.
+                                return;
+                            }
                         }
                         else if (_dxgiTargetWindow != IntPtr.Zero && swapChainWindow != IntPtr.Zero && swapChainWindow != _dxgiTargetWindow)
                         {
                             return;
+                        }
+                        else if (swapChainWindow == IntPtr.Zero)
+                        {
+                            swapChainWindow = _dxgiTargetWindow;
                         }
 
                         // Check if either renderer is already initialized
@@ -683,7 +701,11 @@ namespace PhantomRender.ImGui
                         if (!hasRenderer)
                         {
                             Console.WriteLine("[PhantomRender] DXGI OnPresent - Detecting device type...");
-                            IntPtr hWnd = swapChainWindow != IntPtr.Zero ? swapChainWindow : ResolveWindowHandleFromSwapChain(swapChain);
+                            IntPtr hWnd = swapChainWindow != IntPtr.Zero ? swapChainWindow : _dxgiTargetWindow;
+                            if (hWnd == IntPtr.Zero)
+                            {
+                                hWnd = ResolveWindowHandleFromSwapChain(swapChain);
+                            }
 
                             // 1. Try DX11 first (most modern games use DX11)
                             IntPtr dx11Device = _dx10Hook.GetDeviceAs11(swapChain);
@@ -761,6 +783,13 @@ namespace PhantomRender.ImGui
                         {
                             Console.WriteLine($"[PhantomRender] DXGI OnPresent Lambda Error: {ex}");
                             Console.Out.Flush();
+                        }
+                    }
+                    finally
+                    {
+                        if (lockTaken)
+                        {
+                            Monitor.Exit(_renderLock);
                         }
                     }
                 };

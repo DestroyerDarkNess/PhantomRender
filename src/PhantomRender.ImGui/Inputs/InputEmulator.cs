@@ -73,6 +73,11 @@ namespace PhantomRender.ImGui.Inputs
             UpdateMouseState();
         }
 
+        public void UpdateHotkeysOnly()
+        {
+            ProcessRegisteredHotkeys(DateTime.UtcNow);
+        }
+
         public void AddEvent(Keys key, Action callback)
         {
             if (callback == null)
@@ -157,49 +162,7 @@ namespace PhantomRender.ImGui.Inputs
             UpdateModifierKey(ImGuiKey.ModAlt, Keys.Menu);
             UpdateModifierKey(ImGuiKey.ModSuper, Keys.LWin);
 
-            foreach (KeyValuePair<Keys, Action> singleEvent in _singleKeyEvents)
-            {
-                try
-                {
-                    if (IsKeyDown(singleEvent.Key) &&
-                        (now - _singleKeyLastTriggered[singleEvent.Key]) >= KeyRepeatDelay)
-                    {
-                        singleEvent.Value?.Invoke();
-                        _singleKeyLastTriggered[singleEvent.Key] = now;
-                    }
-                }
-                catch
-                {
-                    // User callbacks should not break the input update path.
-                }
-            }
-
-            foreach (KeyValuePair<HashSet<Keys>, Action> comboEvent in _comboKeyEvents)
-            {
-                try
-                {
-                    bool allKeysDown = true;
-                    foreach (Keys key in comboEvent.Key)
-                    {
-                        if (!IsKeyDown(key))
-                        {
-                            allKeysDown = false;
-                            break;
-                        }
-                    }
-
-                    if (allKeysDown &&
-                        (now - _comboKeyLastTriggered[comboEvent.Key]) >= KeyRepeatDelay)
-                    {
-                        comboEvent.Value?.Invoke();
-                        _comboKeyLastTriggered[comboEvent.Key] = now;
-                    }
-                }
-                catch
-                {
-                    // User callbacks should not break the input update path.
-                }
-            }
+            ProcessRegisteredHotkeys(now);
         }
 
         public bool UpdateMouseState()
@@ -249,6 +212,53 @@ namespace PhantomRender.ImGui.Inputs
             catch
             {
                 // Ignore modifier polling failures.
+            }
+        }
+
+        private void ProcessRegisteredHotkeys(DateTime now)
+        {
+            foreach (KeyValuePair<Keys, Action> singleEvent in _singleKeyEvents)
+            {
+                try
+                {
+                    if (IsKeyDown(singleEvent.Key) &&
+                        (now - _singleKeyLastTriggered[singleEvent.Key]) >= KeyRepeatDelay)
+                    {
+                        singleEvent.Value?.Invoke();
+                        _singleKeyLastTriggered[singleEvent.Key] = now;
+                    }
+                }
+                catch
+                {
+                    // User callbacks should not break the input update path.
+                }
+            }
+
+            foreach (KeyValuePair<HashSet<Keys>, Action> comboEvent in _comboKeyEvents)
+            {
+                try
+                {
+                    bool allKeysDown = true;
+                    foreach (Keys key in comboEvent.Key)
+                    {
+                        if (!IsKeyDown(key))
+                        {
+                            allKeysDown = false;
+                            break;
+                        }
+                    }
+
+                    if (allKeysDown &&
+                        (now - _comboKeyLastTriggered[comboEvent.Key]) >= KeyRepeatDelay)
+                    {
+                        comboEvent.Value?.Invoke();
+                        _comboKeyLastTriggered[comboEvent.Key] = now;
+                    }
+                }
+                catch
+                {
+                    // User callbacks should not break the input update path.
+                }
             }
         }
 
