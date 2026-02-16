@@ -31,4 +31,19 @@
     <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(_AutoPublishRuntimeIdentifier);SelfContained=true;PublishDir=$(_AutoPublishDir);SkipAutoPublish=true" />
   </Target>
 
+  <Target Name="CopyImGuiNativeDepsToNativeOutput" AfterTargets="AutoPublishAfterBuild" Condition="'$(AutoPublishOnBuild)' == 'true'&#xA;                   and '$(DesignTimeBuild)' != 'true'&#xA;                   and '$(IsCrossTargetingBuild)' != 'true'">
+    <ItemGroup>
+      <_PublishedNativeDeps Include="$(_AutoPublishDir)cimgui.dll" Condition="Exists('$(_AutoPublishDir)cimgui.dll')" />
+      <_PublishedNativeDeps Include="$(_AutoPublishDir)ImGuiImpl.dll" Condition="Exists('$(_AutoPublishDir)ImGuiImpl.dll')" />
+      <_NativeOutputDirs Include="$(MSBuildProjectDirectory)\bin\$(Configuration)\$(TargetFramework)\$(_AutoPublishRuntimeIdentifier)\native\" />
+      <_NativeOutputDirs Include="$(MSBuildProjectDirectory)\bin\$(Platform)\$(Configuration)\$(TargetFramework)\$(_AutoPublishRuntimeIdentifier)\native\" Condition="'$(Platform)' != ''" />
+    </ItemGroup>
+
+    <MakeDir Directories="@(_NativeOutputDirs)" />
+
+    <Copy SourceFiles="@(_PublishedNativeDeps)" DestinationFolder="%(_NativeOutputDirs.Identity)" SkipUnchangedFiles="true" Condition="'@(_PublishedNativeDeps)' != '' and '@(_NativeOutputDirs)' != ''" />
+
+    <Message Importance="High" Condition="'@(_PublishedNativeDeps)' != '' and '@(_NativeOutputDirs)' != ''" Text="Copied ImGui native dependencies to: @(_NativeOutputDirs, ', ')" />
+  </Target>
+
 </Project>
