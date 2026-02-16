@@ -340,6 +340,11 @@ namespace PhantomRender.ImGui.Renderers
         private bool _loggedWaitingQueue;
         private bool _loggedSwapchainDesc;
 
+        public DirectX12Renderer(OverlayMenu overlayMenu)
+            : base(overlayMenu, GraphicsApi.DirectX12)
+        {
+        }
+
         private struct FrameContext
         {
             public IntPtr CommandAllocator;
@@ -358,6 +363,7 @@ namespace PhantomRender.ImGui.Renderers
                 Console.WriteLine($"[PhantomRender] DirectX12Renderer: Entering Initialize. Device: {device}, Window: {windowHandle}");
                 Console.Out.Flush();
 
+                RaiseRendererInitializing(device, windowHandle);
                 _device = device;
                 Marshal.AddRef(_device);
 
@@ -428,7 +434,7 @@ namespace PhantomRender.ImGui.Renderers
                     ImGuiImplWin32.SetCurrentContext(Context);
                     ImGuiImplD3D12.SetCurrentContext(Context);
                     _frameCounter++;
-                    OverlayMenu.Draw(GraphicsApi.DirectX12, _windowHandle, _frameCounter);
+                    RenderMenuFrame(_frameCounter);
 
                     RaiseOverlayRender();
                     Hexa.NET.ImGui.ImGui.Render();

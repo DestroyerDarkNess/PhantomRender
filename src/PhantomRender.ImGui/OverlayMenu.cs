@@ -1,49 +1,188 @@
 using System;
 using System.Numerics;
+using System.Threading;
 using Hexa.NET.ImGui;
 using ImGuiApi = Hexa.NET.ImGui.ImGui;
 using PhantomRender.ImGui.Renderers;
 
 namespace PhantomRender.ImGui
 {
-    /// <summary>
-    /// Shared overlay UI that is backend-agnostic.
-    /// Renderers call this to keep the overlay menu consistent across APIs.
-    /// </summary>
-    public static class OverlayMenu
+    public sealed class OverlayMenu
     {
-        private static bool _showStatusWindow = true;
-        private static bool _showDemoWindow = true;
-        private static bool _showMetricsWindow;
-        private static bool _showStyleEditor;
+        private static OverlayMenu _default = new OverlayMenu();
 
-        public static bool ShowMainMenuBar { get; set; } = true;
+        private bool _showStatusWindow = true;
+        private bool _showDemoWindow = true;
+        private bool _showMetricsWindow;
+        private bool _showStyleEditor;
+        private int _raisingError;
 
-        public static bool ShowStatusWindow
+        public OverlayMenu()
+            : this(new OverlayMenuOptions())
+        {
+        }
+
+        public OverlayMenu(OverlayHookKind preferredHook)
+            : this(new OverlayMenuOptions { PreferredHook = preferredHook })
+        {
+        }
+
+        public OverlayMenu(OverlayMenuOptions options)
+        {
+            Options = options ?? throw new ArgumentNullException(nameof(options));
+        }
+
+        public static OverlayMenu Default
+        {
+            get => Volatile.Read(ref _default);
+            set => Volatile.Write(ref _default, value ?? throw new ArgumentNullException(nameof(value)));
+        }
+
+        public OverlayMenuOptions Options { get; }
+
+        public bool ShowMainMenuBar { get; set; } = true;
+
+        public bool ShowStatusWindow
         {
             get => _showStatusWindow;
             set => _showStatusWindow = value;
         }
 
-        public static bool ShowDemoWindow
+        public bool ShowDemoWindow
         {
             get => _showDemoWindow;
             set => _showDemoWindow = value;
         }
 
-        public static bool ShowMetricsWindow
+        public bool ShowMetricsWindow
         {
             get => _showMetricsWindow;
             set => _showMetricsWindow = value;
         }
 
-        public static bool ShowStyleEditor
+        public bool ShowStyleEditor
         {
             get => _showStyleEditor;
             set => _showStyleEditor = value;
         }
 
-        public static void Draw(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        public event EventHandler<OverlayRendererInitializingEventArgs> InitializeRenderer;
+        public event EventHandler<OverlayImGuiInitializedEventArgs> InitializeImGui;
+        public event EventHandler<OverlayRenderEventArgs> Render;
+        public event EventHandler<OverlayErrorEventArgs> OnError;
+
+        internal void RaiseRendererInitializing(IOverlayRenderer renderer, IntPtr device, IntPtr windowHandle)
+        {
+            DispatchSafe(
+                InitializeRenderer,
+                new OverlayRendererInitializingEventArgs(renderer, device, windowHandle),
+                "InitializeRenderer");
+        }
+
+        internal void RaiseImGuiInitialized(IOverlayRenderer renderer)
+        {
+            DispatchSafe(
+                InitializeImGui,
+                new OverlayImGuiInitializedEventArgs(renderer, renderer.Context, renderer.IO),
+                "InitializeImGui");
+        }
+
+        internal void RenderFrame(IOverlayRenderer renderer, GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        {
+            if (Options.EnableDefaultUi)
+            {
+                try
+                {
+                    DrawDefaultUi(api, windowHandle, frameCounter);
+                }
+                catch (Exception ex)
+                {
+                    ReportError("DrawDefaultUi", ex);
+                }
+            }
+
+            DispatchSafe(
+                Render,
+                new OverlayRenderEventArgs(renderer, api, windowHandle, frameCounter),
+                "Render");
+        }
+
+        internal void ReportRuntimeError(string stage, Exception exception)
+        {
+            ReportError(stage, exception);
+        }
+
+        private void DispatchSafe<T>(EventHandler<T> handlers, T args, string stage)
+            where T : EventArgs
+        {
+            if (handlers == null)
+            {
+                return;
+            }
+
+            foreach (Delegate handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    ((EventHandler<T>)handler)(this, args);
+                }
+                catch (Exception ex)
+                {
+                    if (!Options.CatchUserCallbackExceptions)
+                    {
+                        throw;
+                    }
+
+                    ReportError(stage, ex);
+                }
+            }
+        }
+
+        private void ReportError(string stage, Exception exception)
+        {
+            try
+            {
+                Console.WriteLine($"[PhantomRender] OverlayMenu error ({stage}): {exception}");
+                Console.Out.Flush();
+            }
+            catch
+            {
+                // Ignore logging failures.
+            }
+
+            EventHandler<OverlayErrorEventArgs> handlers = OnError;
+            if (handlers == null)
+            {
+                return;
+            }
+
+            if (Interlocked.CompareExchange(ref _raisingError, 1, 0) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                var args = new OverlayErrorEventArgs(stage, exception);
+                foreach (Delegate handler in handlers.GetInvocationList())
+                {
+                    try
+                    {
+                        ((EventHandler<OverlayErrorEventArgs>)handler)(this, args);
+                    }
+                    catch
+                    {
+                        // Avoid recursive error event loops.
+                    }
+                }
+            }
+            finally
+            {
+                Volatile.Write(ref _raisingError, 0);
+            }
+        }
+
+        private void DrawDefaultUi(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
         {
             if (ShowMainMenuBar)
             {
@@ -73,7 +212,7 @@ namespace PhantomRender.ImGui
             }
         }
 
-        private static void DrawMainMenuBar(GraphicsApi api, IntPtr windowHandle)
+        private void DrawMainMenuBar(GraphicsApi api, IntPtr windowHandle)
         {
             if (!ImGuiApi.BeginMainMenuBar())
             {
@@ -111,9 +250,8 @@ namespace PhantomRender.ImGui
             }
         }
 
-        private static void DrawStatusWindow(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        private void DrawStatusWindow(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
         {
-            // Keep it below the main menu bar by default.
             ImGuiApi.SetNextWindowPos(new Vector2(10, 40), ImGuiCond.FirstUseEver);
             ImGuiApi.SetNextWindowBgAlpha(0.85f);
 
@@ -137,6 +275,7 @@ namespace PhantomRender.ImGui
                 ImGuiApi.Checkbox("ImGui Metrics", ref _showMetricsWindow);
                 ImGuiApi.Checkbox("ImGui Style Editor", ref _showStyleEditor);
             }
+
             ImGuiApi.End();
         }
     }

@@ -5,6 +5,7 @@ namespace PhantomRender.ImGui.Renderers
 {
     public interface IOverlayRenderer : IDisposable
     {
+        GraphicsApi GraphicsApi { get; }
         bool IsInitialized { get; }
         ImGuiContextPtr Context { get; }
         ImGuiIOPtr IO { get; }

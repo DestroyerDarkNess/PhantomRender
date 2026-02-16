@@ -60,8 +60,9 @@ namespace PhantomRender.ImGui.Native
                 LoadNativeDependencies();
 
                 Console.WriteLine("[PhantomRender] Initializing OverlayManager...");
-                
-                OverlayManager.Initialize();
+
+                OverlayMenu menu = OverlayMenu.Default;
+                OverlayManager.Initialize(menu);
                 
                 Console.WriteLine("[PhantomRender] OverlayManager Initialized.");
             }

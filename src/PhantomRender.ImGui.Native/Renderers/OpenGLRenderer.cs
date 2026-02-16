@@ -11,6 +11,11 @@ namespace PhantomRender.ImGui.Renderers
         private bool _frameStarted = false;
         private ulong _frameCounter;
 
+        public OpenGLRenderer(OverlayMenu overlayMenu)
+            : base(overlayMenu, GraphicsApi.OpenGL)
+        {
+        }
+
         public override bool Initialize(IntPtr device, IntPtr windowHandle)
         {
             if (IsInitialized) return true;
@@ -19,6 +24,7 @@ namespace PhantomRender.ImGui.Renderers
             {
                 Console.WriteLine($"[PhantomRender] OpenGLRenderer: Entering Initialize (RE-PUBLISHED V2). Window: {windowHandle}");
                 Console.Out.Flush();
+                RaiseRendererInitializing(device, windowHandle);
                 InitializeImGui(windowHandle);
 
                 // Detect the GL version and appropriate GLSL version
@@ -85,7 +91,7 @@ namespace PhantomRender.ImGui.Renderers
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
             _frameCounter++;
-            OverlayMenu.Draw(GraphicsApi.OpenGL, _windowHandle, _frameCounter);
+            RenderMenuFrame(_frameCounter);
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

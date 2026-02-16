@@ -60,6 +60,11 @@ namespace PhantomRender.ImGui.Renderers
         private bool _loggedStateBackupFailure;
         private bool _loggedBackendReinit;
 
+        public DirectX11Renderer(OverlayMenu overlayMenu)
+            : base(overlayMenu, GraphicsApi.DirectX11)
+        {
+        }
+
         public override unsafe bool Initialize(IntPtr device, IntPtr windowHandle)
         {
             if (IsInitialized) return true;
@@ -69,6 +74,7 @@ namespace PhantomRender.ImGui.Renderers
                 Console.WriteLine($"[PhantomRender] DirectX11Renderer: Entering Initialize. Device: {device}, Window: {windowHandle}");
                 Console.Out.Flush();
 
+                RaiseRendererInitializing(device, windowHandle);
                 IntPtr deviceContext = GetImmediateContext(device);
                 if (deviceContext == IntPtr.Zero)
                 {
@@ -185,7 +191,7 @@ namespace PhantomRender.ImGui.Renderers
 
                 Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
                 _frameCounter++;
-                OverlayMenu.Draw(GraphicsApi.DirectX11, _windowHandle, _frameCounter);
+                RenderMenuFrame(_frameCounter);
 
                 RaiseOverlayRender();
                 Hexa.NET.ImGui.ImGui.Render();

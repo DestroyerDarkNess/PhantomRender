@@ -8,6 +8,11 @@ namespace PhantomRender.ImGui.Renderers
 {
     public sealed class DirectX9Renderer : RendererBase
     {
+        public DirectX9Renderer(OverlayMenu overlayMenu)
+            : base(overlayMenu, GraphicsApi.DirectX9)
+        {
+        }
+
         public override unsafe bool Initialize(IntPtr device, IntPtr windowHandle)
         {
             if (IsInitialized) return true;
@@ -17,6 +22,7 @@ namespace PhantomRender.ImGui.Renderers
                 Console.WriteLine($"[PhantomRender] DirectX9Renderer: Entering Initialize (RE-PUBLISHED V2). Device: {device}, Window: {windowHandle}");
                 Console.Out.Flush();
 
+                RaiseRendererInitializing(device, windowHandle);
                 InitializeImGui(windowHandle);
                 
                 // Synchronize context
@@ -72,8 +78,7 @@ namespace PhantomRender.ImGui.Renderers
             _frameCounter++;
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
-
-            OverlayMenu.Draw(GraphicsApi.DirectX9, _windowHandle, _frameCounter);
+            RenderMenuFrame(_frameCounter);
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

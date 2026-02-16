@@ -2,11 +2,21 @@ using System;
 using System.Runtime.InteropServices;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Renderers
 {
     public abstract class RendererBase : IOverlayRenderer
     {
+        private readonly OverlayMenu _overlayMenu;
+
+        protected RendererBase(OverlayMenu overlayMenu, GraphicsApi graphicsApi)
+        {
+            _overlayMenu = overlayMenu ?? OverlayMenu.Default;
+            GraphicsApi = graphicsApi;
+        }
+
+        public GraphicsApi GraphicsApi { get; }
         public ImGuiContextPtr Context { get; protected set; }
         public ImGuiIOPtr IO { get; protected set; }
         public bool IsInitialized { get; protected set; }
@@ -24,7 +34,70 @@ namespace PhantomRender.ImGui.Renderers
 
         protected void RaiseOverlayRender()
         {
-            OnOverlayRender?.Invoke();
+            Action handlers = OnOverlayRender;
+            if (handlers == null)
+            {
+                return;
+            }
+
+            foreach (Delegate handler in handlers.GetInvocationList())
+            {
+                try
+                {
+                    ((Action)handler)();
+                }
+                catch (Exception ex)
+                {
+                    if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                    {
+                        throw;
+                    }
+
+                    try { _overlayMenu.ReportRuntimeError("OnOverlayRender", ex); } catch { }
+                }
+            }
+        }
+
+        protected void RaiseRendererInitializing(IntPtr device, IntPtr windowHandle)
+        {
+            try { _overlayMenu.RaiseRendererInitializing(this, device, windowHandle); }
+            catch (Exception ex)
+            {
+                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                {
+                    throw;
+                }
+
+                try { _overlayMenu.ReportRuntimeError("InitializeRenderer", ex); } catch { }
+            }
+        }
+
+        protected void RaiseImGuiInitialized()
+        {
+            try { _overlayMenu.RaiseImGuiInitialized(this); }
+            catch (Exception ex)
+            {
+                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                {
+                    throw;
+                }
+
+                try { _overlayMenu.ReportRuntimeError("InitializeImGui", ex); } catch { }
+            }
+        }
+
+        protected void RenderMenuFrame(ulong frameCounter)
+        {
+            try { _overlayMenu.RenderFrame(this, GraphicsApi, _windowHandle, frameCounter); }
+            catch (Exception ex)
+            {
+                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                {
+                    throw;
+                }
+
+                try { _overlayMenu.ReportRuntimeError("RenderFrame", ex); } catch { }
+            }
         }
 
         // --- Input Emulation ---
@@ -62,6 +135,8 @@ namespace PhantomRender.ImGui.Renderers
             // Initialize Input Emulator
             Console.WriteLine("[PhantomRender] Initializing Input Emulator...");
             _inputEmulator = new PhantomRender.ImGui.Inputs.InputEmulator(IO, windowHandle);
+
+            RaiseImGuiInitialized();
             
             Console.WriteLine("[PhantomRender] InitializeImGui completed successfully.");
             Console.Out.Flush();
