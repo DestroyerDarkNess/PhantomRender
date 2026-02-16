@@ -2,12 +2,14 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.OpenGL3;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Renderers
 {
     public sealed class OpenGLRenderer : RendererBase
     {
         private bool _frameStarted = false;
+        private ulong _frameCounter;
 
         public override bool Initialize(IntPtr device, IntPtr windowHandle)
         {
@@ -82,18 +84,8 @@ namespace PhantomRender.ImGui.Renderers
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
-            // Test window for testing
-            Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(100, 100), ImGuiCond.FirstUseEver);
-            bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender OpenGL");
-            if (showWindow)
-            {
-                Hexa.NET.ImGui.ImGui.Text("Status: Active (OpenGL)");
-                Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-            }
-            Hexa.NET.ImGui.ImGui.End();
-
-            // Demo window for testing
-            Hexa.NET.ImGui.ImGui.ShowDemoWindow();
+            _frameCounter++;
+            OverlayMenu.Draw(GraphicsApi.OpenGL, _windowHandle, _frameCounter);
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

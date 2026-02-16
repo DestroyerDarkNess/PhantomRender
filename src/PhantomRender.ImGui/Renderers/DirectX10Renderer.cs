@@ -2,11 +2,14 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D10;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Renderers
 {
     public sealed class DirectX10Renderer : RendererBase
     {
+        private ulong _frameCounter;
+
         public override unsafe bool Initialize(IntPtr device, IntPtr windowHandle)
         {
             if (IsInitialized) return true;
@@ -68,18 +71,8 @@ namespace PhantomRender.ImGui.Renderers
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
-            // Test window
-            Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(50, 50), ImGuiCond.FirstUseEver);
-            bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX10");
-            if (showWindow)
-            {
-                Hexa.NET.ImGui.ImGui.Text("Status: Active (DX10)");
-                Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-            }
-            Hexa.NET.ImGui.ImGui.End();
-
-            // Demo window
-            Hexa.NET.ImGui.ImGui.ShowDemoWindow();
+            _frameCounter++;
+            OverlayMenu.Draw(GraphicsApi.DirectX10, _windowHandle, _frameCounter);
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

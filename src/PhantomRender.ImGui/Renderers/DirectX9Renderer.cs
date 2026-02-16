@@ -2,6 +2,7 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D9;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Renderers
 {
@@ -62,7 +63,7 @@ namespace PhantomRender.ImGui.Renderers
             Hexa.NET.ImGui.ImGui.NewFrame();
         }
 
-        private int _frameCounter = 0;
+        private ulong _frameCounter;
 
         public override void Render()
         {
@@ -72,19 +73,7 @@ namespace PhantomRender.ImGui.Renderers
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
-            // Test window at fixed position
-            Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(10, 10), ImGuiCond.FirstUseEver);
-            bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX9");
-            if (showWindow)
-            {
-                Hexa.NET.ImGui.ImGui.Text("Status: Active");
-                Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-                Hexa.NET.ImGui.ImGui.Text($"Frames: {_frameCounter}");
-            }
-            Hexa.NET.ImGui.ImGui.End();
-
-            // Demo window for testing
-            Hexa.NET.ImGui.ImGui.ShowDemoWindow();
+            OverlayMenu.Draw(GraphicsApi.DirectX9, _windowHandle, _frameCounter);
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

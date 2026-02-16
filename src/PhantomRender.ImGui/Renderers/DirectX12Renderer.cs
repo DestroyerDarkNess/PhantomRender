@@ -8,6 +8,7 @@ using Hexa.NET.ImGui.Backends.D3D12;
 using Hexa.NET.ImGui.Backends.Win32;
 using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Native;
+using PhantomRender.ImGui;
 
 namespace PhantomRender.ImGui.Renderers
 {
@@ -427,17 +428,7 @@ namespace PhantomRender.ImGui.Renderers
                     ImGuiImplWin32.SetCurrentContext(Context);
                     ImGuiImplD3D12.SetCurrentContext(Context);
                     _frameCounter++;
-
-                    Hexa.NET.ImGui.ImGui.SetNextWindowPos(new System.Numerics.Vector2(50, 50), ImGuiCond.FirstUseEver);
-                    bool showWindow = Hexa.NET.ImGui.ImGui.Begin("PhantomRender DX12");
-                    if (showWindow)
-                    {
-                        Hexa.NET.ImGui.ImGui.Text("Status: Active (DX12)");
-                        Hexa.NET.ImGui.ImGui.Text($"Window: {_windowHandle}");
-                    }
-                    Hexa.NET.ImGui.ImGui.End();
-
-                    Hexa.NET.ImGui.ImGui.ShowDemoWindow();
+                    OverlayMenu.Draw(GraphicsApi.DirectX12, _windowHandle, _frameCounter);
 
                     RaiseOverlayRender();
                     Hexa.NET.ImGui.ImGui.Render();
