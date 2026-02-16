@@ -8,7 +8,7 @@ namespace PhantomRender.ImGui
         public OverlayHookKind PreferredHook { get; set; } = OverlayHookKind.Auto;
 
         /// <summary>
-        /// When true, built-in windows (status/menu/demo toggles) are rendered automatically.
+        /// When true, the native host may render built-in windows (status/menu/demo toggles).
         /// </summary>
         public bool EnableDefaultUi { get; set; } = true;
 
@@ -23,4 +23,3 @@ namespace PhantomRender.ImGui
         public int ProbeTimeoutMs { get; set; } = 10_000;
     }
 }
-
