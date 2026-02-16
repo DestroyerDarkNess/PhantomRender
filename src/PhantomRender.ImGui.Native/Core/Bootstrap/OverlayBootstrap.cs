@@ -6,9 +6,12 @@ namespace PhantomRender.ImGui.Native
     public static class OverlayBootstrap
     {
         private static readonly object _sync = new object();
+        private static readonly OverlayBootstrapOptions _options = new OverlayBootstrapOptions();
         private static OverlayMenu _menu;
         private static DefaultOverlayUi _defaultUi;
         private static InputEmulation _inputEmulation;
+
+        public static OverlayBootstrapOptions Options => _options;
 
         public static void Initialize(OverlayMenu menu)
         {
@@ -27,13 +30,13 @@ namespace PhantomRender.ImGui.Native
 
                     try { _inputEmulation?.Dispose(); } catch { }
                     _inputEmulation = null;
-                    if (_menu.Options.EnableDefaultInputEmulation)
+                    if (_options.EnableDefaultInputEmulation)
                     {
                         _inputEmulation = new InputEmulation(_menu);
                     }
 
                     try { _defaultUi?.Dispose(); } catch { }
-                    _defaultUi = new DefaultOverlayUi(_menu);
+                    _defaultUi = new DefaultOverlayUi(_menu, _options);
                 }
 
                 OverlayManager.Initialize(_menu);

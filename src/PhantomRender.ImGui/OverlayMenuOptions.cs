@@ -8,17 +8,6 @@ namespace PhantomRender.ImGui
         public OverlayHookKind PreferredHook { get; set; } = OverlayHookKind.Auto;
 
         /// <summary>
-        /// When true, the native host may render built-in windows (status/menu/demo toggles).
-        /// </summary>
-        public bool EnableDefaultUi { get; set; } = true;
-
-        /// <summary>
-        /// When true, the native runtime wires a default keyboard/mouse ImGui input emulator.
-        /// Disable this when you already have a custom input hook feeding ImGui.
-        /// </summary>
-        public bool EnableDefaultInputEmulation { get; set; } = true;
-
-        /// <summary>
         /// When true, exceptions thrown by user callbacks are captured and reported through OnError.
         /// </summary>
         public bool CatchUserCallbackExceptions { get; set; } = true;
