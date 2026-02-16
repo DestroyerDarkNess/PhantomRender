@@ -7,11 +7,6 @@ namespace PhantomRender.ImGui
     public sealed class OverlayMenu
     {
         private static OverlayMenu _default = new OverlayMenu();
-
-        private bool _showStatusWindow = true;
-        private bool _showDemoWindow = true;
-        private bool _showMetricsWindow;
-        private bool _showStyleEditor;
         private int _raisingError;
 
         public OverlayMenu()
@@ -36,32 +31,6 @@ namespace PhantomRender.ImGui
         }
 
         public OverlayMenuOptions Options { get; }
-
-        public bool ShowMainMenuBar { get; set; } = true;
-
-        public bool ShowStatusWindow
-        {
-            get => _showStatusWindow;
-            set => _showStatusWindow = value;
-        }
-
-        public bool ShowDemoWindow
-        {
-            get => _showDemoWindow;
-            set => _showDemoWindow = value;
-        }
-
-        public bool ShowMetricsWindow
-        {
-            get => _showMetricsWindow;
-            set => _showMetricsWindow = value;
-        }
-
-        public bool ShowStyleEditor
-        {
-            get => _showStyleEditor;
-            set => _showStyleEditor = value;
-        }
 
         public event EventHandler<OverlayRendererInitializingEventArgs> InitializeRenderer;
         public event EventHandler<OverlayImGuiInitializedEventArgs> InitializeImGui;

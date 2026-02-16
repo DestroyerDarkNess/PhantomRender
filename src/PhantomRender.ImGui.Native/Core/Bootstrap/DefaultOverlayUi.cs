@@ -10,6 +10,11 @@ namespace PhantomRender.ImGui.Native
     internal sealed class DefaultOverlayUi : IDisposable
     {
         private readonly OverlayMenu _menu;
+        private bool _showMainMenuBar = true;
+        private bool _showStatusWindow = true;
+        private bool _showDemoWindow = true;
+        private bool _showMetricsWindow;
+        private bool _showStyleEditor;
         private bool _disposed;
 
         public DefaultOverlayUi(OverlayMenu menu)
@@ -42,39 +47,39 @@ namespace PhantomRender.ImGui.Native
 
         private void DrawDefaultUi(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
         {
-            if (_menu.ShowMainMenuBar)
+            if (_showMainMenuBar)
             {
                 DrawMainMenuBar(api, windowHandle);
             }
 
-            bool showStatusWindow = _menu.ShowStatusWindow;
+            bool showStatusWindow = _showStatusWindow;
             if (showStatusWindow)
             {
                 DrawStatusWindow(api, windowHandle, frameCounter, ref showStatusWindow);
-                _menu.ShowStatusWindow = showStatusWindow;
+                _showStatusWindow = showStatusWindow;
             }
 
-            bool showDemo = _menu.ShowDemoWindow;
+            bool showDemo = _showDemoWindow;
             if (showDemo)
             {
                 ImGuiApi.ShowDemoWindow(ref showDemo);
-                _menu.ShowDemoWindow = showDemo;
+                _showDemoWindow = showDemo;
             }
 
-            bool showMetrics = _menu.ShowMetricsWindow;
+            bool showMetrics = _showMetricsWindow;
             if (showMetrics)
             {
                 ImGuiApi.ShowMetricsWindow(ref showMetrics);
-                _menu.ShowMetricsWindow = showMetrics;
+                _showMetricsWindow = showMetrics;
             }
 
-            bool showStyleEditor = _menu.ShowStyleEditor;
+            bool showStyleEditor = _showStyleEditor;
             if (showStyleEditor)
             {
                 ImGuiApi.Begin("ImGui Style Editor", ref showStyleEditor);
                 ImGuiApi.ShowStyleEditor();
                 ImGuiApi.End();
-                _menu.ShowStyleEditor = showStyleEditor;
+                _showStyleEditor = showStyleEditor;
             }
         }
 
@@ -99,20 +104,20 @@ namespace PhantomRender.ImGui.Native
 
                         ImGuiApi.Separator();
 
-                        bool showStatusWindow = _menu.ShowStatusWindow;
-                        bool showDemo = _menu.ShowDemoWindow;
-                        bool showMetrics = _menu.ShowMetricsWindow;
-                        bool showStyleEditor = _menu.ShowStyleEditor;
+                        bool showStatusWindow = _showStatusWindow;
+                        bool showDemo = _showDemoWindow;
+                        bool showMetrics = _showMetricsWindow;
+                        bool showStyleEditor = _showStyleEditor;
 
                         if (ImGuiApi.MenuItem("Status Window", "", showStatusWindow, true)) showStatusWindow = !showStatusWindow;
                         if (ImGuiApi.MenuItem("ImGui Demo", "", showDemo, true)) showDemo = !showDemo;
                         if (ImGuiApi.MenuItem("ImGui Metrics", "", showMetrics, true)) showMetrics = !showMetrics;
                         if (ImGuiApi.MenuItem("ImGui Style Editor", "", showStyleEditor, true)) showStyleEditor = !showStyleEditor;
 
-                        _menu.ShowStatusWindow = showStatusWindow;
-                        _menu.ShowDemoWindow = showDemo;
-                        _menu.ShowMetricsWindow = showMetrics;
-                        _menu.ShowStyleEditor = showStyleEditor;
+                        _showStatusWindow = showStatusWindow;
+                        _showDemoWindow = showDemo;
+                        _showMetricsWindow = showMetrics;
+                        _showStyleEditor = showStyleEditor;
                     }
                     finally
                     {
@@ -146,18 +151,18 @@ namespace PhantomRender.ImGui.Native
                 var io = ImGuiApi.GetIO();
                 ImGuiApi.Text($"FPS: {io.Framerate:0.0}");
 
-                bool showDemo = _menu.ShowDemoWindow;
-                bool showMetrics = _menu.ShowMetricsWindow;
-                bool showStyleEditor = _menu.ShowStyleEditor;
+                bool showDemo = _showDemoWindow;
+                bool showMetrics = _showMetricsWindow;
+                bool showStyleEditor = _showStyleEditor;
 
                 ImGuiApi.Separator();
                 ImGuiApi.Checkbox("ImGui Demo", ref showDemo);
                 ImGuiApi.Checkbox("ImGui Metrics", ref showMetrics);
                 ImGuiApi.Checkbox("ImGui Style Editor", ref showStyleEditor);
 
-                _menu.ShowDemoWindow = showDemo;
-                _menu.ShowMetricsWindow = showMetrics;
-                _menu.ShowStyleEditor = showStyleEditor;
+                _showDemoWindow = showDemo;
+                _showMetricsWindow = showMetrics;
+                _showStyleEditor = showStyleEditor;
             }
 
             ImGuiApi.End();
