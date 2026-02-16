@@ -26,13 +26,11 @@ namespace PhantomRender.ImGui.Native
                     _menu = menu;
                     Subscribe(_menu);
 
-                    try { _inputEmulation?.Dispose(); } catch { }
-
-                    _inputEmulation = new InputEmulation(_menu);
-
                     try { _defaultUi?.Dispose(); } catch { }
-
                     _defaultUi = new DefaultOverlayUi(_menu);
+
+                    try { _inputEmulation?.Dispose(); } catch { }
+                    _inputEmulation = new InputEmulation(_menu, IsMenuVisible, ToggleMenuVisibility);
                 }
 
                 OverlayManager.Initialize(_menu);
@@ -52,6 +50,21 @@ namespace PhantomRender.ImGui.Native
                 try { _defaultUi?.Dispose(); } catch { }
                 _defaultUi = null;
             }
+        }
+
+        private static bool IsMenuVisible()
+        {
+            return _defaultUi != null && _defaultUi.Visible;
+        }
+
+        private static void ToggleMenuVisibility()
+        {
+            if (_defaultUi == null)
+            {
+                return;
+            }
+
+            _defaultUi.Visible = !_defaultUi.Visible;
         }
 
         private static void Subscribe(OverlayMenu menu)

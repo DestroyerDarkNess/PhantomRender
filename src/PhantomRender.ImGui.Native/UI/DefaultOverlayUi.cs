@@ -9,12 +9,19 @@ namespace PhantomRender.ImGui.Native.UI
     internal sealed class DefaultOverlayUi : IDisposable
     {
         private readonly OverlayMenu _menu;
+        private bool _visible = true;
         private bool _showMainMenuBar = true;
         private bool _showStatusWindow = true;
         private bool _showDemoWindow = true;
         private bool _showMetricsWindow;
         private bool _showStyleEditor;
         private bool _disposed;
+
+        public bool Visible
+        {
+            get => _visible;
+            set => _visible = value;
+        }
 
         public DefaultOverlayUi(OverlayMenu menu)
         {
@@ -35,7 +42,7 @@ namespace PhantomRender.ImGui.Native.UI
 
         private void OnRender(object sender, OverlayRenderEventArgs e)
         {
-            if (_disposed)
+            if (_disposed || !_visible)
             {
                 return;
             }
