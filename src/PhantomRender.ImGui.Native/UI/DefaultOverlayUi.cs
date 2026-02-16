@@ -2,15 +2,13 @@ using System;
 using System.Numerics;
 using Hexa.NET.ImGui;
 using ImGuiApi = Hexa.NET.ImGui.ImGui;
-using PhantomRender.ImGui;
 using PhantomRender.ImGui.Renderers;
 
-namespace PhantomRender.ImGui.Native
+namespace PhantomRender.ImGui.Native.UI
 {
     internal sealed class DefaultOverlayUi : IDisposable
     {
         private readonly OverlayMenu _menu;
-        private readonly OverlayBootstrapOptions _options;
         private bool _showMainMenuBar = true;
         private bool _showStatusWindow = true;
         private bool _showDemoWindow = true;
@@ -18,10 +16,9 @@ namespace PhantomRender.ImGui.Native
         private bool _showStyleEditor;
         private bool _disposed;
 
-        public DefaultOverlayUi(OverlayMenu menu, OverlayBootstrapOptions options)
+        public DefaultOverlayUi(OverlayMenu menu)
         {
             _menu = menu ?? throw new ArgumentNullException(nameof(menu));
-            _options = options ?? throw new ArgumentNullException(nameof(options));
             _menu.Render += OnRender;
         }
 
@@ -38,7 +35,7 @@ namespace PhantomRender.ImGui.Native
 
         private void OnRender(object sender, OverlayRenderEventArgs e)
         {
-            if (_disposed || !_options.EnableDefaultUi)
+            if (_disposed)
             {
                 return;
             }
@@ -47,7 +44,7 @@ namespace PhantomRender.ImGui.Native
             DrawDefaultUi(e.Api, e.WindowHandle, e.FrameCounter);
         }
 
-        private void DrawDefaultUi(GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        private void DrawDefaultUi(GraphicsApi api, nint windowHandle, ulong frameCounter)
         {
             if (_showMainMenuBar)
             {
@@ -85,7 +82,7 @@ namespace PhantomRender.ImGui.Native
             }
         }
 
-        private void DrawMainMenuBar(GraphicsApi api, IntPtr windowHandle)
+        private void DrawMainMenuBar(GraphicsApi api, nint windowHandle)
         {
             if (!ImGuiApi.BeginMainMenuBar())
             {
@@ -99,7 +96,7 @@ namespace PhantomRender.ImGui.Native
                     try
                     {
                         ImGuiApi.TextDisabled($"Backend: {api.ToDisplayName()} ({api.ToShortName()})");
-                        if (windowHandle != IntPtr.Zero)
+                        if (windowHandle != nint.Zero)
                         {
                             ImGuiApi.TextDisabled($"Window: 0x{windowHandle.ToInt64():X}");
                         }
@@ -133,7 +130,7 @@ namespace PhantomRender.ImGui.Native
             }
         }
 
-        private void DrawStatusWindow(GraphicsApi api, IntPtr windowHandle, ulong frameCounter, ref bool showStatusWindow)
+        private void DrawStatusWindow(GraphicsApi api, nint windowHandle, ulong frameCounter, ref bool showStatusWindow)
         {
             ImGuiApi.SetNextWindowPos(new Vector2(10, 40), ImGuiCond.FirstUseEver);
             ImGuiApi.SetNextWindowBgAlpha(0.85f);
@@ -143,7 +140,7 @@ namespace PhantomRender.ImGui.Native
             if (ImGuiApi.Begin("PhantomRender", ref showStatusWindow, flags))
             {
                 ImGuiApi.Text($"Backend: {api.ToDisplayName()} ({api.ToShortName()})");
-                if (windowHandle != IntPtr.Zero)
+                if (windowHandle != nint.Zero)
                 {
                     ImGuiApi.Text($"Window: 0x{windowHandle.ToInt64():X}");
                 }

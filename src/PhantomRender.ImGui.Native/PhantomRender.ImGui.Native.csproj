@@ -26,17 +26,9 @@
     <RdXmlFile Include="rd.xml" />
   </ItemGroup>
 
-  <Target Name="AutoPublishAfterBuild"
-          AfterTargets="Build"
-          Condition="'$(AutoPublishOnBuild)' == 'true'
-                   and '$(DesignTimeBuild)' != 'true'
-                   and '$(IsCrossTargetingBuild)' != 'true'
-                   and '$(SkipAutoPublish)' != 'true'">
-    <Message Importance="High"
-             Text="Auto-publishing $(MSBuildProjectName) ($(Configuration), $(_AutoPublishRuntimeIdentifier)) to $(_AutoPublishDir)" />
-    <MSBuild Projects="$(MSBuildProjectFullPath)"
-             Targets="Publish"
-             Properties="Configuration=$(Configuration);RuntimeIdentifier=$(_AutoPublishRuntimeIdentifier);SelfContained=true;PublishDir=$(_AutoPublishDir);SkipAutoPublish=true" />
+  <Target Name="AutoPublishAfterBuild" AfterTargets="Build" Condition="'$(AutoPublishOnBuild)' == 'true'&#xA;                   and '$(DesignTimeBuild)' != 'true'&#xA;                   and '$(IsCrossTargetingBuild)' != 'true'&#xA;                   and '$(SkipAutoPublish)' != 'true'">
+    <Message Importance="High" Text="Auto-publishing $(MSBuildProjectName) ($(Configuration), $(_AutoPublishRuntimeIdentifier)) to $(_AutoPublishDir)" />
+    <MSBuild Projects="$(MSBuildProjectFullPath)" Targets="Publish" Properties="Configuration=$(Configuration);RuntimeIdentifier=$(_AutoPublishRuntimeIdentifier);SelfContained=true;PublishDir=$(_AutoPublishDir);SkipAutoPublish=true" />
   </Target>
 
 </Project>

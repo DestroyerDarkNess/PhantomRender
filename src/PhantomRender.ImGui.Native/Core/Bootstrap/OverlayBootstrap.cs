@@ -1,17 +1,15 @@
 using System;
 using PhantomRender.ImGui;
+using PhantomRender.ImGui.Native.UI;
 
 namespace PhantomRender.ImGui.Native
 {
     public static class OverlayBootstrap
     {
         private static readonly object _sync = new object();
-        private static readonly OverlayBootstrapOptions _options = new OverlayBootstrapOptions();
         private static OverlayMenu _menu;
         private static DefaultOverlayUi _defaultUi;
         private static InputEmulation _inputEmulation;
-
-        public static OverlayBootstrapOptions Options => _options;
 
         public static void Initialize(OverlayMenu menu)
         {
@@ -29,14 +27,12 @@ namespace PhantomRender.ImGui.Native
                     Subscribe(_menu);
 
                     try { _inputEmulation?.Dispose(); } catch { }
-                    _inputEmulation = null;
-                    if (_options.EnableDefaultInputEmulation)
-                    {
-                        _inputEmulation = new InputEmulation(_menu);
-                    }
+
+                    _inputEmulation = new InputEmulation(_menu);
 
                     try { _defaultUi?.Dispose(); } catch { }
-                    _defaultUi = new DefaultOverlayUi(_menu, _options);
+
+                    _defaultUi = new DefaultOverlayUi(_menu);
                 }
 
                 OverlayManager.Initialize(_menu);
