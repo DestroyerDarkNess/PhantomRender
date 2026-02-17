@@ -24,7 +24,7 @@ namespace PhantomRender.ImGui.Renderers
 
                 RaiseRendererInitializing(device, windowHandle);
                 InitializeImGui(windowHandle);
-                
+
                 // Synchronize context
                 Console.WriteLine("[PhantomRender] DirectX9Renderer: Setting context for D3D9 backend...");
                 Console.Out.Flush();
@@ -33,7 +33,7 @@ namespace PhantomRender.ImGui.Renderers
                 // Initialize D3D9 Backend
                 Console.WriteLine("[PhantomRender] DirectX9Renderer: Calling ImGuiImplD3D9.Init...");
                 Console.Out.Flush();
-                
+
                 if (!ImGuiImplD3D9.Init((IDirect3DDevice9*)device))
                 {
                     Console.WriteLine("[PhantomRender] DirectX9Renderer: ImGuiImplD3D9.Init returned FALSE!");
@@ -69,16 +69,12 @@ namespace PhantomRender.ImGui.Renderers
             Hexa.NET.ImGui.ImGui.NewFrame();
         }
 
-        private ulong _frameCounter;
-
         public override void Render()
         {
             if (!IsInitialized) return;
 
-            _frameCounter++;
-
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
-            RenderMenuFrame(_frameCounter);
+            RenderMenuFrame();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

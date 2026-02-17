@@ -8,8 +8,6 @@ namespace PhantomRender.ImGui.Renderers
 {
     public sealed class DirectX10Renderer : RendererBase
     {
-        private ulong _frameCounter;
-
         public DirectX10Renderer(OverlayMenu overlayMenu)
             : base(overlayMenu, GraphicsApi.DirectX10)
         {
@@ -26,7 +24,7 @@ namespace PhantomRender.ImGui.Renderers
 
                 RaiseRendererInitializing(device, windowHandle);
                 InitializeImGui(windowHandle);
-                
+
                 // Synchronize context
                 Console.WriteLine("[PhantomRender] DirectX10Renderer: Setting context for D3D10 backend...");
                 Console.Out.Flush();
@@ -35,7 +33,7 @@ namespace PhantomRender.ImGui.Renderers
                 // Initialize D3D10 Backend
                 Console.WriteLine("[PhantomRender] DirectX10Renderer: Calling ImGuiImplD3D10.Init...");
                 Console.Out.Flush();
-                
+
                 if (!ImGuiImplD3D10.Init((ID3D10Device*)device))
                 {
                     Console.WriteLine("[PhantomRender] DirectX10Renderer: ImGuiImplD3D10.Init returned FALSE!");
@@ -77,8 +75,7 @@ namespace PhantomRender.ImGui.Renderers
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
-            _frameCounter++;
-            RenderMenuFrame(_frameCounter);
+            RenderMenuFrame();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

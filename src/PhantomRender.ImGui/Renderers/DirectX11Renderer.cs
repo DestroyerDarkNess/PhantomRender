@@ -50,7 +50,6 @@ namespace PhantomRender.ImGui.Renderers
         private IntPtr _renderTargetView;
         private IntPtr _swapChainForRenderTarget;
         private IntPtr _lastSwapChain;
-        private ulong _frameCounter;
         private bool _loggedRenderTargetReady;
         private bool _loggedBackendReinit;
         private bool _loggedMultithreadProtectEnabled;
@@ -165,8 +164,8 @@ namespace PhantomRender.ImGui.Renderers
             }
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
-            _frameCounter++;
-            RenderMenuFrame(_frameCounter);
+
+            RenderMenuFrame();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();

@@ -33,9 +33,13 @@ namespace PhantomRender.ImGui
         public OverlayMenuOptions Options { get; }
 
         public event EventHandler<OverlayRendererInitializingEventArgs> InitializeRenderer;
+
         public event EventHandler<OverlayImGuiInitializedEventArgs> InitializeImGui;
+
         public event EventHandler<OverlayNewFrameEventArgs> NewFrame;
+
         public event EventHandler<OverlayRenderEventArgs> Render;
+
         public event EventHandler<OverlayErrorEventArgs> OnError;
 
         internal void RaiseRendererInitializing(IOverlayRenderer renderer, IntPtr device, IntPtr windowHandle)
@@ -54,11 +58,11 @@ namespace PhantomRender.ImGui
                 "InitializeImGui");
         }
 
-        internal void RenderFrame(IOverlayRenderer renderer, GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        internal void RenderFrame(IOverlayRenderer renderer, GraphicsApi api, IntPtr windowHandle)
         {
             DispatchSafe(
                 Render,
-                new OverlayRenderEventArgs(renderer, api, windowHandle, frameCounter),
+                new OverlayRenderEventArgs(renderer, api, windowHandle),
                 "Render");
         }
 

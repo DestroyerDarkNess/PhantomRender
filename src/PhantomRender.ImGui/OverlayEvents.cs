@@ -34,18 +34,16 @@ namespace PhantomRender.ImGui
 
     public sealed class OverlayRenderEventArgs : EventArgs
     {
-        public OverlayRenderEventArgs(IOverlayRenderer renderer, Renderers.GraphicsApi api, IntPtr windowHandle, ulong frameCounter)
+        public OverlayRenderEventArgs(IOverlayRenderer renderer, Renderers.GraphicsApi api, IntPtr windowHandle)
         {
             Renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
             Api = api;
             WindowHandle = windowHandle;
-            FrameCounter = frameCounter;
         }
 
         public IOverlayRenderer Renderer { get; }
         public Renderers.GraphicsApi Api { get; }
         public IntPtr WindowHandle { get; }
-        public ulong FrameCounter { get; }
     }
 
     public sealed class OverlayNewFrameEventArgs : EventArgs

@@ -48,10 +48,10 @@ namespace PhantomRender.ImGui.Native.UI
             }
 
             // Let OverlayMenu.DispatchSafe handle callback exceptions and route them to OnError.
-            DrawDefaultUi(e.Api, e.WindowHandle, e.FrameCounter);
+            DrawDefaultUi(e.Api, e.WindowHandle);
         }
 
-        private void DrawDefaultUi(GraphicsApi api, nint windowHandle, ulong frameCounter)
+        private void DrawDefaultUi(GraphicsApi api, nint windowHandle)
         {
             if (_showMainMenuBar)
             {
@@ -61,7 +61,7 @@ namespace PhantomRender.ImGui.Native.UI
             bool showStatusWindow = _showStatusWindow;
             if (showStatusWindow)
             {
-                DrawStatusWindow(api, windowHandle, frameCounter, ref showStatusWindow);
+                DrawStatusWindow(api, windowHandle, ref showStatusWindow);
                 _showStatusWindow = showStatusWindow;
             }
 
@@ -137,7 +137,7 @@ namespace PhantomRender.ImGui.Native.UI
             }
         }
 
-        private void DrawStatusWindow(GraphicsApi api, nint windowHandle, ulong frameCounter, ref bool showStatusWindow)
+        private void DrawStatusWindow(GraphicsApi api, nint windowHandle, ref bool showStatusWindow)
         {
             ImGuiApi.SetNextWindowPos(new Vector2(10, 40), ImGuiCond.FirstUseEver);
             ImGuiApi.SetNextWindowBgAlpha(0.85f);
@@ -151,8 +151,6 @@ namespace PhantomRender.ImGui.Native.UI
                 {
                     ImGuiApi.Text($"Window: 0x{windowHandle.ToInt64():X}");
                 }
-
-                ImGuiApi.Text($"Frame: {frameCounter}");
 
                 var io = ImGuiApi.GetIO();
                 ImGuiApi.Text($"FPS: {io.Framerate:0.0}");

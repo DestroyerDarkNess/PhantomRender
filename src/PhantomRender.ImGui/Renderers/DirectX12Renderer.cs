@@ -166,7 +166,7 @@ namespace PhantomRender.ImGui.Renderers
         private delegate int CreateFenceDelegate(IntPtr device, ulong initialValue, int flags, ref Guid riid, out IntPtr fence);
 
         // NOTE: COM x64 ABI for D3D12 Handles (8 bytes) - Historical C-ABI requires (this, &result) order.
-        // This means RCX = this, RDX = out result. 
+        // This means RCX = this, RDX = out result.
         // Using return values or (out, this) order causes VTable corruption.
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void GetCPUDescriptorHandleForHeapStartDelegate(IntPtr heap, out D3D12CpuDescriptorHandle handle);
@@ -290,7 +290,7 @@ namespace PhantomRender.ImGui.Renderers
 
         [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_RenderDrawData")]
         private static extern void CImGui_ImplDX12_RenderDrawData_Manual(ImDrawData* drawData, IntPtr graphicsCommandList);
-        
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr CreateEventW(IntPtr lpEventAttributes, int bManualReset, int bInitialState, string lpName);
 
@@ -335,7 +335,6 @@ namespace PhantomRender.ImGui.Renderers
 
         private bool _imguiDx12Initialized;
         private bool _frameStarted;
-        private ulong _frameCounter;
 
         private bool _loggedWaitingQueue;
         private bool _loggedSwapchainDesc;
@@ -433,28 +432,17 @@ namespace PhantomRender.ImGui.Renderers
                     Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
                     ImGuiImplWin32.SetCurrentContext(Context);
                     ImGuiImplD3D12.SetCurrentContext(Context);
-                    _frameCounter++;
-                    RenderMenuFrame(_frameCounter);
+
+                    RenderMenuFrame();
 
                     RaiseOverlayRender();
                     Hexa.NET.ImGui.ImGui.Render();
 
                     var drawData = Hexa.NET.ImGui.ImGui.GetDrawData();
-                    if (_frameCounter <= 5 || _frameCounter % 300 == 0)
-                    {
-                        var io = Hexa.NET.ImGui.ImGui.GetIO();
-                        Console.WriteLine($"[PhantomRender] DX12 Frame {_frameCounter}: Display={io.DisplaySize.X}x{io.DisplaySize.Y}, Valid={drawData.Valid}, DrawLists={drawData.CmdListsCount}, Vtx={drawData.TotalVtxCount}, Idx={drawData.TotalIdxCount}");
-                        Console.Out.Flush();
-                    }
 
                     if (drawData.CmdListsCount > 0)
                     {
                         RenderDrawData(drawData);
-                    }
-                    else if (_frameCounter <= 10)
-                    {
-                         Console.WriteLine("[PhantomRender] DX12: Skipping RenderDrawData (CmdListsCount is 0)");
-                         Console.Out.Flush();
                     }
                 }
                 catch (Exception ex)
@@ -643,7 +631,7 @@ namespace PhantomRender.ImGui.Renderers
                 if (!DirectX12CommandQueueResolver.TryGetCommandQueueFromSwapChain(swapChain, out var newQueue) || newQueue == IntPtr.Zero)
                 {
                     // Keep existing queue if possible, but log if we detect a mismatch
-                    return true; 
+                    return true;
                 }
 
                 if (newQueue != _commandQueue)
@@ -852,7 +840,7 @@ namespace PhantomRender.ImGui.Renderers
             if (_srvGpuStart.Ptr == 0)
             {
                 Console.WriteLine("[PhantomRender] DirectX12Renderer: SRV heap GPU start is 0. Running VTable Diagnostic...");
-                
+
                 // Diagnostic: Dump VTable of Heap (indices 0-15)
                 IntPtr vtbl = Marshal.ReadIntPtr(_srvHeap);
                 Console.WriteLine($"[PhantomRender] DX12 VTable Dump (_srvHeap=0x{_srvHeap:X}): vtbl=0x{vtbl:X}");
@@ -941,7 +929,7 @@ namespace PhantomRender.ImGui.Renderers
             Guid iidCmdList = Direct3D12.IID_ID3D12GraphicsCommandList;
             if (CreateCommandList(_device, 0, D3D12_COMMAND_LIST_TYPE_DIRECT, _frames[0].CommandAllocator, IntPtr.Zero, ref iidCmdList, out _commandList) < 0 || _commandList == IntPtr.Zero)
             {
-                    Console.WriteLine("[PhantomRender] DirectX12Renderer: CreateCommandList failed.");
+                Console.WriteLine("[PhantomRender] DirectX12Renderer: CreateCommandList failed.");
                 Console.Out.Flush();
                 return false;
             }
@@ -1039,7 +1027,6 @@ namespace PhantomRender.ImGui.Renderers
         {
             if (_commandQueue == IntPtr.Zero || _commandList == IntPtr.Zero || _frames == null)
             {
-                if (_frameCounter <= 5) { Console.WriteLine("[PhantomRender] DX12 RenderDrawData: skipped (null queue/list/frames)"); Console.Out.Flush(); }
                 return;
             }
 
@@ -1051,7 +1038,6 @@ namespace PhantomRender.ImGui.Renderers
             uint frameIndex = GetCurrentBackBufferIndex(_swapChain3);
             if (frameIndex >= _frames.Length)
             {
-                if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frameIndex {frameIndex} >= {_frames.Length}"); Console.Out.Flush(); }
                 return;
             }
 
@@ -1062,14 +1048,12 @@ namespace PhantomRender.ImGui.Renderers
             int hr = CommandAllocatorReset(frame.CommandAllocator);
             if (hr < 0)
             {
-                if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: CommandAllocatorReset FAILED hr=0x{hr:X8}"); Console.Out.Flush(); }
                 return;
             }
 
             hr = GraphicsCommandListReset(_commandList, frame.CommandAllocator, IntPtr.Zero);
             if (hr < 0)
             {
-                if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: GraphicsCommandListReset FAILED hr=0x{hr:X8}"); Console.Out.Flush(); }
                 return;
             }
 
@@ -1111,7 +1095,7 @@ namespace PhantomRender.ImGui.Renderers
                 MinDepth = 0.0f,
                 MaxDepth = 1.0f
             };
-            
+
             var rect = new D3D12_RECT
             {
                 left = 0,
@@ -1123,13 +1107,6 @@ namespace PhantomRender.ImGui.Renderers
             GraphicsCommandListRSSetViewports(_commandList, 1, &viewport);
             GraphicsCommandListRSSetScissorRects(_commandList, 1, &rect);
 
-            if (_frameCounter <= 5)
-            {
-                Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frameIdx={frameIndex}, RT=0x{frame.RenderTarget:X}, RTV=0x{rtvPtr:X}, srvHeap=0x{srvHeap:X}, Res={_width}x{_height}");
-                Console.WriteLine($"[PhantomRender] DX12 DrawData Check: Valid={drawData.Valid}, CmdLists={drawData.CmdListsCount}, Pos=({drawData.DisplayPos.X},{drawData.DisplayPos.Y}), Size=({drawData.DisplaySize.X},{drawData.DisplaySize.Y}), Scale=({drawData.FramebufferScale.X},{drawData.FramebufferScale.Y})");
-                Console.Out.Flush();
-            }
-
             try
             {
                 // Safety check on DrawData handle
@@ -1138,12 +1115,6 @@ namespace PhantomRender.ImGui.Renderers
                     Console.WriteLine("[PhantomRender] DX12 RenderDrawData: DrawData Handle is NULL!");
                     Console.Out.Flush();
                     return;
-                }
-
-                if (_frameCounter <= 5)
-                {
-                    Console.WriteLine($"[PhantomRender] DX12: Calling CImGui_ImplDX12_RenderDrawData (drawData=0x{(nuint)drawData.Handle:X}, cmdList=0x{_commandList.ToString("X")})");
-                    Console.Out.Flush();
                 }
 
                 // Using manual P/Invoke to ensure correct entry point and ABI.
@@ -1163,24 +1134,15 @@ namespace PhantomRender.ImGui.Renderers
             hr = GraphicsCommandListClose(_commandList);
             if (hr < 0)
             {
-                if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: Close FAILED hr=0x{hr:X8}"); Console.Out.Flush(); }
                 return;
             }
 
             IntPtr cmdList = _commandList;
-            if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12: Executing command list 0x{cmdList.ToString("X")} on queue 0x{_commandQueue.ToString("X")}..."); Console.Out.Flush(); }
             CommandQueueExecuteCommandLists(_commandQueue, 1, &cmdList);
 
             ulong nextFence = ++_fenceValue;
             CommandQueueSignal(_commandQueue, _fence, nextFence);
             frame.FenceValue = nextFence;
-            if (_frameCounter <= 5) { Console.WriteLine($"[PhantomRender] DX12: Signal sent ({nextFence}). Frame processed."); Console.Out.Flush(); }
-
-            if (_frameCounter <= 5)
-            {
-                Console.WriteLine($"[PhantomRender] DX12 RenderDrawData: frame {_frameCounter} completed successfully, fence={nextFence}");
-                Console.Out.Flush();
-            }
         }
 
         private void WaitForFrame(ref FrameContext frame)
@@ -1430,7 +1392,7 @@ namespace PhantomRender.ImGui.Renderers
             //     ...
             //     21: RSSetViewports
             //     22: RSSetScissorRects
-            
+
             IntPtr addr = GetVTableFunctionAddress(commandList, 21);
             if (addr == IntPtr.Zero) return;
 

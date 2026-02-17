@@ -9,7 +9,6 @@ namespace PhantomRender.ImGui.Renderers
     public sealed class OpenGLRenderer : RendererBase
     {
         private bool _frameStarted = false;
-        private ulong _frameCounter;
 
         public OpenGLRenderer(OverlayMenu overlayMenu)
             : base(overlayMenu, GraphicsApi.OpenGL)
@@ -44,7 +43,7 @@ namespace PhantomRender.ImGui.Renderers
 
                 Console.WriteLine($"[PhantomRender] OpenGLRenderer: Calling ImGuiImplOpenGL3.Init with {glslVersion}...");
                 Console.Out.Flush();
-                
+
                 if (!ImGuiImplOpenGL3.Init(glslVersion))
                 {
                     Console.WriteLine("[PhantomRender] OpenGLRenderer: ImGuiImplOpenGL3.Init returned FALSE!");
@@ -90,8 +89,7 @@ namespace PhantomRender.ImGui.Renderers
 
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
 
-            _frameCounter++;
-            RenderMenuFrame(_frameCounter);
+            RenderMenuFrame();
 
             RaiseOverlayRender();
             Hexa.NET.ImGui.ImGui.Render();
@@ -100,17 +98,20 @@ namespace PhantomRender.ImGui.Renderers
             _frameStarted = false;
         }
 
-        public override void OnLostDevice() { }
-        public override void OnResetDevice() { }
+        public override void OnLostDevice()
+        { }
+
+        public override void OnResetDevice()
+        { }
 
         public override void Dispose()
         {
-             if (IsInitialized)
-             {
-                 ImGuiImplOpenGL3.Shutdown();
-                 ShutdownImGui();
-                 IsInitialized = false;
-             }
+            if (IsInitialized)
+            {
+                ImGuiImplOpenGL3.Shutdown();
+                ShutdownImGui();
+                IsInitialized = false;
+            }
         }
     }
 }

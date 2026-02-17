@@ -26,10 +26,15 @@ namespace PhantomRender.ImGui.Renderers
         protected IntPtr _windowHandle;
 
         public abstract bool Initialize(IntPtr device, IntPtr windowHandle);
+
         public abstract void NewFrame();
+
         public abstract void Render();
+
         public abstract void OnLostDevice();
+
         public abstract void OnResetDevice();
+
         public abstract void Dispose();
 
         protected void RaiseOverlayRender()
@@ -86,9 +91,9 @@ namespace PhantomRender.ImGui.Renderers
             }
         }
 
-        protected void RenderMenuFrame(ulong frameCounter)
+        protected void RenderMenuFrame()
         {
-            try { _overlayMenu.RenderFrame(this, GraphicsApi, _windowHandle, frameCounter); }
+            try { _overlayMenu.RenderFrame(this, GraphicsApi, _windowHandle); }
             catch (Exception ex)
             {
                 if (!_overlayMenu.Options.CatchUserCallbackExceptions)
@@ -117,34 +122,34 @@ namespace PhantomRender.ImGui.Renderers
         protected unsafe void InitializeImGui(IntPtr windowHandle)
         {
             _windowHandle = windowHandle;
-            
+
             Console.WriteLine("[PhantomRender] Step 1: Creating ImGui context...");
             Console.Out.Flush();
             Context = Hexa.NET.ImGui.ImGui.CreateContext();
-            
+
             Console.WriteLine("[PhantomRender] Step 2: Setting current context...");
             Console.Out.Flush();
             Hexa.NET.ImGui.ImGui.SetCurrentContext(Context);
-            
+
             Console.WriteLine("[PhantomRender] Step 3: Getting IO...");
             Console.Out.Flush();
             IO = Hexa.NET.ImGui.ImGui.GetIO();
-            
+
             Console.WriteLine("[PhantomRender] Step 4: Setting ConfigFlags...");
             Console.Out.Flush();
             IO.ConfigFlags |= ImGuiConfigFlags.NavEnableKeyboard;
-            
+
             // Initialize Win32 Backend
             Console.WriteLine("[PhantomRender] Step 5: ImGuiImplWin32.SetCurrentContext...");
             Console.Out.Flush();
             ImGuiImplWin32.SetCurrentContext(Context);
-            
+
             Console.WriteLine("[PhantomRender] Step 6: ImGuiImplWin32.Init...");
             Console.Out.Flush();
             ImGuiImplWin32.Init((void*)windowHandle);
 
             RaiseImGuiInitialized();
-            
+
             Console.WriteLine("[PhantomRender] InitializeImGui completed successfully.");
             Console.Out.Flush();
         }
@@ -183,7 +188,7 @@ namespace PhantomRender.ImGui.Renderers
         private const uint GL_MINOR_VERSION = 0x821C;
         private const uint GL_VERSION = 0x1F02;
 
-        [DllImport("opengl32.dll")] 
+        [DllImport("opengl32.dll")]
         private static extern IntPtr glGetString(uint name);
 
         [DllImport("opengl32.dll")]
@@ -227,7 +232,7 @@ namespace PhantomRender.ImGui.Renderers
                     {
                         string versionString = Marshal.PtrToStringAnsi(versionPtr);
                         Console.WriteLine($"[PhantomRender] GL_VERSION string: {versionString}");
-                        
+
                         // Parse "X.Y.Z ..." format
                         if (!string.IsNullOrEmpty(versionString))
                         {
@@ -267,4 +272,3 @@ namespace PhantomRender.ImGui.Renderers
         private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
     }
 }
-
