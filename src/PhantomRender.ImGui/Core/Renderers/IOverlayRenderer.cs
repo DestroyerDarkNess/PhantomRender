@@ -8,6 +8,7 @@ namespace PhantomRender.ImGui.Core.Renderers
     {
         GraphicsApi GraphicsApi { get; }
         bool IsInitialized { get; }
+        nint WindowHandle { get; }
         ImGuiContextPtr Context { get; }
         ImGuiIOPtr IO { get; }
 

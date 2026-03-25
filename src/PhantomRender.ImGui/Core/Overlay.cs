@@ -9,13 +9,19 @@ namespace PhantomRender.ImGui.Core
         private int _raisingError;
 
         protected Overlay(GraphicsApi graphicsApi)
+            : this(CreateDefaultRenderer(graphicsApi))
         {
-            if (graphicsApi == GraphicsApi.Unknown)
+        }
+
+        protected Overlay(RendererBase renderer)
+        {
+            if (renderer == null)
             {
-                throw new ArgumentOutOfRangeException(nameof(graphicsApi), "Overlay requires a concrete graphics API.");
+                throw new ArgumentNullException(nameof(renderer));
             }
 
-            GraphicsApi = graphicsApi;
+            renderer.Attach(this);
+            GraphicsApi = renderer.GraphicsApi;
             Dependencies = new DependencyResolver();
         }
 
@@ -35,22 +41,27 @@ namespace PhantomRender.ImGui.Core
 
         public event EventHandler<OverlayErrorEventArgs> Error;
 
-        protected IOverlayRenderer CreateRenderer()
+        protected static RendererBase CreateDefaultRenderer(GraphicsApi graphicsApi)
         {
-            switch (GraphicsApi)
+            if (graphicsApi == GraphicsApi.Unknown)
+            {
+                throw new ArgumentOutOfRangeException(nameof(graphicsApi), "Overlay requires a concrete graphics API.");
+            }
+
+            switch (graphicsApi)
             {
                 case GraphicsApi.DirectX9:
-                    return new DirectX9Renderer(this);
+                    return new DirectX9Renderer();
                 case GraphicsApi.DirectX11:
-                    return new DirectX11Renderer(this);
+                // return new DirectX11Renderer();
 #if NET5_0_OR_GREATER
                 case GraphicsApi.DirectX12:
-                    return new DirectX12Renderer(this);
+                    // return new DirectX12Renderer();
 #endif
                 case GraphicsApi.OpenGL:
-                    return new OpenGLRenderer(this);
+                    return new OpenGLRenderer();
                 default:
-                    throw new NotSupportedException($"{GraphicsApi.ToDisplayName()} does not have an ImGui renderer yet.");
+                    throw new NotSupportedException($"{graphicsApi.ToDisplayName()} does not have an ImGui renderer yet.");
             }
         }
 

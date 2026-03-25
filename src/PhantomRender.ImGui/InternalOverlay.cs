@@ -6,12 +6,17 @@ namespace PhantomRender.ImGui
     public sealed class InternalOverlay : Overlay
     {
         public InternalOverlay(GraphicsApi graphicsApi)
-            : base(graphicsApi)
+            : this(CreateDefaultRenderer(graphicsApi))
         {
-            Renderer = CreateRenderer();
         }
 
-        public IOverlayRenderer Renderer { get; }
+        public InternalOverlay(RendererBase renderer)
+            : base(renderer)
+        {
+            Renderer = renderer ?? throw new System.ArgumentNullException(nameof(renderer));
+        }
+
+        public RendererBase Renderer { get; }
 
         public bool Initialize(nint device, nint windowHandle)
         {

@@ -46,9 +46,14 @@ namespace PhantomRender.ImGui
         private int _height = 720;
 
         public ExternalOverlay(GraphicsApi graphicsApi)
-            : base(graphicsApi)
+            : this(CreateDefaultRenderer(graphicsApi))
         {
-            _renderer = CreateRenderer();
+        }
+
+        public ExternalOverlay(RendererBase renderer)
+            : base(renderer)
+        {
+            _renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
         }
 
         public IOverlayRenderer Renderer => _renderer;
