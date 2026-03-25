@@ -1,5 +1,6 @@
 using System;
 using System.Threading;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core.Renderers;
 
 namespace PhantomRender.ImGui.Core
@@ -52,6 +53,7 @@ namespace PhantomRender.ImGui.Core
             {
                 case GraphicsApi.DirectX9:
                     return new DirectX9Renderer();
+
                 case GraphicsApi.DirectX11:
                 // return new DirectX11Renderer();
 #if NET5_0_OR_GREATER
@@ -60,6 +62,7 @@ namespace PhantomRender.ImGui.Core
 #endif
                 case GraphicsApi.OpenGL:
                     return new OpenGLRenderer();
+
                 default:
                     throw new NotSupportedException($"{graphicsApi.ToDisplayName()} does not have an ImGui renderer yet.");
             }

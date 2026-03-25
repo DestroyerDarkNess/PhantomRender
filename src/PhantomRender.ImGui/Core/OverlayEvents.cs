@@ -1,5 +1,6 @@
 using System;
 using Hexa.NET.ImGui;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core.Renderers;
 
 namespace PhantomRender.ImGui.Core
@@ -65,13 +66,4 @@ namespace PhantomRender.ImGui.Core
         public Exception Exception { get; }
     }
 
-    public sealed class OverlayWindowEventArgs : EventArgs
-    {
-        public OverlayWindowEventArgs(nint windowHandle)
-        {
-            WindowHandle = windowHandle;
-        }
-
-        public nint WindowHandle { get; }
-    }
 }

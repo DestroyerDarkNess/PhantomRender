@@ -1,11 +1,16 @@
 using System;
 using System.Runtime.InteropServices;
-using PhantomRender.ImGui.Core;
-using PhantomRender.ImGui.Core.Renderers;
+using PhantomRender.Core;
 
-namespace PhantomRender.ImGui
+namespace PhantomRender.Overlays
 {
-    public sealed class ExternalOverlay : Overlay
+    public enum ExternalOverlayMode
+    {
+        Overlay = 0,
+        Window = 1,
+    }
+
+    public sealed class ExternalOverlayWindow : IDisposable
     {
         private const int SW_HIDE = 0;
         private const int SW_SHOW = 5;
@@ -31,7 +36,6 @@ namespace PhantomRender.ImGui
         private const uint PM_REMOVE = 0x0001;
         private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
 
-        private readonly IOverlayRenderer _renderer;
         private WndProcDelegate _wndProc;
         private ushort _windowClassAtom;
         private string _windowClassName;
@@ -45,18 +49,12 @@ namespace PhantomRender.ImGui
         private int _width = 1280;
         private int _height = 720;
 
-        public ExternalOverlay(GraphicsApi graphicsApi)
-            : this(CreateDefaultRenderer(graphicsApi))
+        public ExternalOverlayWindow(GraphicsApi graphicsApi)
         {
+            GraphicsApi = graphicsApi;
         }
 
-        public ExternalOverlay(RendererBase renderer)
-            : base(renderer)
-        {
-            _renderer = renderer ?? throw new ArgumentNullException(nameof(renderer));
-        }
-
-        public IOverlayRenderer Renderer => _renderer;
+        public GraphicsApi GraphicsApi { get; }
 
         public string Title { get; set; } = "PhantomRender";
 
@@ -142,18 +140,10 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
-            try
-            {
-                return _renderer.CreateExternalWindow(this) != IntPtr.Zero;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("CreateExternalWindow", ex);
-                return false;
-            }
+            return EnsureWindowCreated() != IntPtr.Zero;
         }
 
-        internal nint EnsureWindowCreated()
+        public nint EnsureWindowCreated()
         {
             if (WindowHandle != IntPtr.Zero)
             {
@@ -193,7 +183,6 @@ namespace PhantomRender.ImGui
 
             if (WindowHandle == IntPtr.Zero)
             {
-                ushort atom = _windowClassAtom;
                 _windowClassAtom = 0;
                 UnregisterClassW(_windowClassName, wndClass.hInstance);
                 throw new InvalidOperationException($"CreateWindowExW failed. Win32Error={Marshal.GetLastWin32Error()}");
@@ -208,12 +197,6 @@ namespace PhantomRender.ImGui
 
             WindowCreated?.Invoke(this, new OverlayWindowEventArgs(WindowHandle));
             return WindowHandle;
-        }
-
-        public bool Initialize(nint device)
-        {
-            nint windowHandle = EnsureWindowCreated();
-            return _renderer.Initialize(device, windowHandle);
         }
 
         public void Show()
@@ -296,26 +279,6 @@ namespace PhantomRender.ImGui
             }
         }
 
-        public void BeginFrame()
-        {
-            _renderer.NewFrame();
-        }
-
-        public void RenderFrame()
-        {
-            _renderer.Render();
-        }
-
-        public void OnLostDevice()
-        {
-            _renderer.OnLostDevice();
-        }
-
-        public void OnResetDevice()
-        {
-            _renderer.OnResetDevice();
-        }
-
         public void DestroyWindow()
         {
             if (WindowHandle == IntPtr.Zero)
@@ -337,7 +300,7 @@ namespace PhantomRender.ImGui
             WindowDestroyed?.Invoke(this, new OverlayWindowEventArgs(handle));
         }
 
-        public override void Dispose()
+        public void Dispose()
         {
             if (_disposed)
             {
@@ -346,8 +309,6 @@ namespace PhantomRender.ImGui
 
             _disposed = true;
             DestroyWindow();
-            _renderer.Dispose();
-            base.Dispose();
         }
 
         private void RefreshWindowStyles()
@@ -405,6 +366,7 @@ namespace PhantomRender.ImGui
                     _isClosed = true;
                     DestroyWindow(hWnd);
                     return 0;
+
                 case WM_DESTROY:
                     _visible = false;
                     _isClosed = true;

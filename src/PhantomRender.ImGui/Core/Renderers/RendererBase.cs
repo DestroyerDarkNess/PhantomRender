@@ -2,6 +2,7 @@ using System;
 using System.Runtime.ExceptionServices;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
@@ -29,11 +30,6 @@ namespace PhantomRender.ImGui.Core.Renderers
         public event Action OnOverlayRender;
 
         public abstract bool Initialize(nint device, nint windowHandle);
-
-        public virtual nint CreateExternalWindow(ExternalOverlay overlay)
-        {
-            throw new NotSupportedException($"{GraphicsApi.ToDisplayName()} does not support external window creation yet.");
-        }
 
         public abstract void NewFrame();
 

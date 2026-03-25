@@ -1,7 +1,17 @@
+
+<<<<<<< TODO: Unmerged change from project 'PhantomRender (net48)', Before:
+using System;
+=======
+using PhantomRender;
+using PhantomRender.Core;
+using PhantomRender.Core;
+using PhantomRender.Core.Graphics;
+using System;
+>>>>>>> After
 using System;
 using System.Runtime.InteropServices;
 
-namespace PhantomRender.ImGui.Core
+namespace PhantomRender.Core
 {
     public enum GraphicsApi
     {
@@ -16,8 +26,6 @@ namespace PhantomRender.ImGui.Core
 
     public static class GraphicsApiDetector
     {
-        // This is bootstrap detection only. Once hooks are active, the renderer
-        // should be treated as authoritative instead of the loaded-module heuristic.
         public static GraphicsApi DetectRenderer()
         {
             if (IsLoaded(GraphicsApi.Vulkan))
@@ -61,34 +69,22 @@ namespace PhantomRender.ImGui.Core
 
         public static bool IsLoaded(GraphicsApi api)
         {
-            switch (api)
+            string moduleName = api switch
             {
-                case GraphicsApi.DirectX9:
-                    return IsModuleLoaded("d3d9.dll");
-                case GraphicsApi.DirectX10:
-                    return IsModuleLoaded("d3d10.dll")
-                        || IsModuleLoaded("d3d10_1.dll")
-                        || IsModuleLoaded("d3d10core.dll");
-                case GraphicsApi.DirectX11:
-                    return IsModuleLoaded("d3d11.dll");
-                case GraphicsApi.DirectX12:
-                    return IsModuleLoaded("d3d12.dll");
-                case GraphicsApi.OpenGL:
-                    return IsModuleLoaded("opengl32.dll");
-                case GraphicsApi.Vulkan:
-                    return IsModuleLoaded("vulkan-1.dll");
-                default:
-                    return false;
-            }
+                GraphicsApi.DirectX9 => "d3d9.dll",
+                GraphicsApi.DirectX10 => "d3d10.dll",
+                GraphicsApi.DirectX11 => "d3d11.dll",
+                GraphicsApi.DirectX12 => "d3d12.dll",
+                GraphicsApi.OpenGL => "opengl32.dll",
+                GraphicsApi.Vulkan => "vulkan-1.dll",
+                _ => null,
+            };
+
+            return moduleName != null && GetModuleHandleW(moduleName) != nint.Zero;
         }
 
-        private static bool IsModuleLoaded(string moduleName)
-        {
-            return GetModuleHandleW(moduleName) != IntPtr.Zero;
-        }
-
-        [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr GetModuleHandleW(string lpModuleName);
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW", SetLastError = true)]
+        private static extern nint GetModuleHandleW(string lpModuleName);
     }
 
     public static class GraphicsApiExtensions

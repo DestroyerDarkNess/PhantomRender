@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Hexa.NET.ImGui.Backends.OpenGL3;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
@@ -15,16 +16,6 @@ namespace PhantomRender.ImGui.Core.Renderers
         public OpenGLRenderer()
             : base(GraphicsApi.OpenGL)
         {
-        }
-
-        public override nint CreateExternalWindow(ExternalOverlay overlay)
-        {
-            if (overlay == null)
-            {
-                throw new ArgumentNullException(nameof(overlay));
-            }
-
-            return overlay.EnsureWindowCreated();
         }
 
         public override bool Initialize(nint device, nint windowHandle)

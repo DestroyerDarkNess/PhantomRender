@@ -1,6 +1,7 @@
 using System;
 using Hexa.NET.ImGui.Backends.D3D9;
 using Hexa.NET.ImGui.Backends.Win32;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
@@ -23,16 +24,6 @@ namespace PhantomRender.ImGui.Core.Renderers
         }
 
         public DirectX9InitializationEndpoint InitializationEndpoint { get; set; } = DirectX9InitializationEndpoint.Present;
-
-        public override nint CreateExternalWindow(ExternalOverlay overlay)
-        {
-            if (overlay == null)
-            {
-                throw new ArgumentNullException(nameof(overlay));
-            }
-
-            return overlay.EnsureWindowCreated();
-        }
 
         public override bool Initialize(nint device, nint windowHandle)
         {

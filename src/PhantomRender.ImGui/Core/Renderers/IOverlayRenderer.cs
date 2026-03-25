@@ -1,5 +1,6 @@
 using System;
 using Hexa.NET.ImGui;
+using PhantomRender.Core;
 using PhantomRender.ImGui.Core;
 
 namespace PhantomRender.ImGui.Core.Renderers
@@ -15,7 +16,6 @@ namespace PhantomRender.ImGui.Core.Renderers
         event Action OnOverlayRender;
 
         bool Initialize(nint device, nint windowHandle);
-        nint CreateExternalWindow(ExternalOverlay overlay);
         void NewFrame();
         void Render();
         void OnLostDevice();

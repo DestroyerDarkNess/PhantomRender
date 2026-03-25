@@ -1,5 +1,6 @@
 using PhantomRender.ImGui.Core;
 using PhantomRender.ImGui.Core.Renderers;
+using PhantomRender.Core;
 
 namespace PhantomRender.ImGui
 {
