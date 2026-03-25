@@ -3,6 +3,7 @@ using System.Runtime.InteropServices;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.Win32;
 using PhantomRender.ImGui;
+using PhantomRender.ImGui.Core;
 
 namespace PhantomRender.ImGui.Renderers
 {

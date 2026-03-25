@@ -1,5 +1,6 @@
 using System;
 using Hexa.NET.ImGui;
+using PhantomRender.ImGui.Core;
 
 namespace PhantomRender.ImGui.Renderers
 {

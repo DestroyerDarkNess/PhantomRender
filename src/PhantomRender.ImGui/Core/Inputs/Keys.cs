@@ -1,4 +1,4 @@
-namespace PhantomRender.ImGui.Inputs
+namespace PhantomRender.ImGui.Core.Inputs
 {
     /// <summary>
     /// Minimal Win32 virtual-key enum used by the input emulator.

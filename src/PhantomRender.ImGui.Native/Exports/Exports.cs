@@ -2,18 +2,14 @@ using System;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 
-
 namespace PhantomRender.ImGui.Native
 {
     public static class Exports
     {
         private const uint DLL_PROCESS_DETACH = 0;
         private const uint DLL_PROCESS_ATTACH = 1;
-        
+
         private static IntPtr _hModule;
-        private static readonly RuntimeHost _runtimeHost = new RuntimeHost(
-            new DependencyLoader(),
-            new OverlayBootstrapAdapter());
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static unsafe bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
@@ -30,8 +26,9 @@ namespace PhantomRender.ImGui.Native
                         CloseHandle(handle);
                     }
                     break;
+
                 case DLL_PROCESS_DETACH:
-                    _runtimeHost.Shutdown();
+                    //_runtimeHost.Shutdown();
                     break;
             }
             return true;
@@ -40,7 +37,7 @@ namespace PhantomRender.ImGui.Native
         [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvStdcall) })]
         private static uint InitializeThreadWrapper(IntPtr lpParam)
         {
-            _runtimeHost.Initialize(_hModule);
+            //_runtimeHost.Initialize(_hModule);
             return 0;
         }
 

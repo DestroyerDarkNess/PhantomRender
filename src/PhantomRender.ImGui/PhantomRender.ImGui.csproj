@@ -27,16 +27,12 @@
     For net48, System.Numerics must stay in the global alias. We instead move System.Numerics.Vectors out
     of the global alias to avoid duplicate type resolution while still satisfying dependency references.
   -->
-  <Target Name="AliasSystemNumericsVectorsForNet48"
-          AfterTargets="ResolveReferences"
-          Condition="'$(TargetFramework)' == 'net48'">
+  <Target Name="AliasSystemNumericsVectorsForNet48" AfterTargets="ResolveReferences" Condition="'$(TargetFramework)' == 'net48'">
     <ItemGroup>
-      <ReferencePathWithRefAssemblies Update="@(ReferencePathWithRefAssemblies)"
-                                      Condition="'%(ReferencePathWithRefAssemblies.FileName)%(ReferencePathWithRefAssemblies.Extension)' == 'System.Numerics.Vectors.dll'">
+      <ReferencePathWithRefAssemblies Update="@(ReferencePathWithRefAssemblies)" Condition="'%(ReferencePathWithRefAssemblies.FileName)%(ReferencePathWithRefAssemblies.Extension)' == 'System.Numerics.Vectors.dll'">
         <Aliases>vectors</Aliases>
       </ReferencePathWithRefAssemblies>
-      <ReferencePath Update="@(ReferencePath)"
-                     Condition="'%(ReferencePath.FileName)%(ReferencePath.Extension)' == 'System.Numerics.Vectors.dll'">
+      <ReferencePath Update="@(ReferencePath)" Condition="'%(ReferencePath.FileName)%(ReferencePath.Extension)' == 'System.Numerics.Vectors.dll'">
         <Aliases>vectors</Aliases>
       </ReferencePath>
     </ItemGroup>

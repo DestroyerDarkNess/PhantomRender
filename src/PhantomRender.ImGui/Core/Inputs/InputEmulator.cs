@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Hexa.NET.ImGui;
 
-namespace PhantomRender.ImGui.Inputs
+namespace PhantomRender.ImGui.Core.Inputs
 {
     public class InputEmulator
     {
@@ -36,11 +36,11 @@ namespace PhantomRender.ImGui.Inputs
             new Dictionary<HashSet<Keys>, DateTime>(HashSet<Keys>.CreateSetComparer());
 
         public InputEmulator(ImGuiIOPtr io)
-            : this(io, IntPtr.Zero)
+            : this(io, nint.Zero)
         {
         }
 
-        public InputEmulator(ImGuiIOPtr io, IntPtr windowHandle)
+        public InputEmulator(ImGuiIOPtr io, nint windowHandle)
         {
             _io = io;
             _ = windowHandle;
@@ -133,7 +133,7 @@ namespace PhantomRender.ImGui.Inputs
                     if (isKeyDown)
                     {
                         DateTime lastPressed = _keyLastPressed[key.Value];
-                        if ((now - lastPressed) >= KeyRepeatDelay)
+                        if (now - lastPressed >= KeyRepeatDelay)
                         {
                             _io.AddKeyEvent(key.Value, true);
 
@@ -222,7 +222,7 @@ namespace PhantomRender.ImGui.Inputs
                 try
                 {
                     if (IsKeyDown(singleEvent.Key) &&
-                        (now - _singleKeyLastTriggered[singleEvent.Key]) >= KeyRepeatDelay)
+                        now - _singleKeyLastTriggered[singleEvent.Key] >= KeyRepeatDelay)
                     {
                         singleEvent.Value?.Invoke();
                         _singleKeyLastTriggered[singleEvent.Key] = now;
@@ -249,7 +249,7 @@ namespace PhantomRender.ImGui.Inputs
                     }
 
                     if (allKeysDown &&
-                        (now - _comboKeyLastTriggered[comboEvent.Key]) >= KeyRepeatDelay)
+                        now - _comboKeyLastTriggered[comboEvent.Key] >= KeyRepeatDelay)
                     {
                         comboEvent.Value?.Invoke();
                         _comboKeyLastTriggered[comboEvent.Key] = now;
@@ -357,7 +357,7 @@ namespace PhantomRender.ImGui.Inputs
         {
         }
 
-        public InputImguiEmu(ImGuiIOPtr io, IntPtr windowHandle)
+        public InputImguiEmu(ImGuiIOPtr io, nint windowHandle)
             : base(io, windowHandle)
         {
         }

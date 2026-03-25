@@ -9,6 +9,7 @@ using Hexa.NET.ImGui.Backends.Win32;
 using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Native;
 using PhantomRender.ImGui;
+using PhantomRender.ImGui.Core;
 
 namespace PhantomRender.ImGui.Renderers
 {
