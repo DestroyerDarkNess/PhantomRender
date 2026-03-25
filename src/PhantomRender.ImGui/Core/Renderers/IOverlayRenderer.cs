@@ -2,7 +2,7 @@ using System;
 using Hexa.NET.ImGui;
 using PhantomRender.ImGui.Core;
 
-namespace PhantomRender.ImGui.Renderers
+namespace PhantomRender.ImGui.Core.Renderers
 {
     public interface IOverlayRenderer : IDisposable
     {
@@ -13,7 +13,8 @@ namespace PhantomRender.ImGui.Renderers
 
         event Action OnOverlayRender;
 
-        bool Initialize(IntPtr device, IntPtr windowHandle);
+        bool Initialize(nint device, nint windowHandle);
+        nint CreateExternalWindow(ExternalOverlay overlay);
         void NewFrame();
         void Render();
         void OnLostDevice();

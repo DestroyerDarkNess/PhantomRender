@@ -36,7 +36,7 @@ namespace PhantomRender.ImGui.Core.Inputs
             new Dictionary<HashSet<Keys>, DateTime>(HashSet<Keys>.CreateSetComparer());
 
         public InputEmulator(ImGuiIOPtr io)
-            : this(io, nint.Zero)
+            : this(io, IntPtr.Zero)
         {
         }
 

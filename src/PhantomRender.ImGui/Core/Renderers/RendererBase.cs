@@ -2,18 +2,17 @@ using System;
 using System.Runtime.InteropServices;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.Win32;
-using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core;
 
-namespace PhantomRender.ImGui.Renderers
+namespace PhantomRender.ImGui.Core.Renderers
 {
     public abstract class RendererBase : IOverlayRenderer
     {
-        private readonly OverlayMenu _overlayMenu;
+        private readonly Overlay _overlay;
 
-        protected RendererBase(OverlayMenu overlayMenu, GraphicsApi graphicsApi)
+        protected RendererBase(Overlay overlay, GraphicsApi graphicsApi)
         {
-            _overlayMenu = overlayMenu ?? OverlayMenu.Default;
+            _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
             GraphicsApi = graphicsApi;
         }
 
@@ -24,9 +23,14 @@ namespace PhantomRender.ImGui.Renderers
 
         public event Action OnOverlayRender;
 
-        protected IntPtr _windowHandle;
+        protected nint _windowHandle;
 
-        public abstract bool Initialize(IntPtr device, IntPtr windowHandle);
+        public abstract bool Initialize(nint device, nint windowHandle);
+
+        public virtual nint CreateExternalWindow(ExternalOverlay overlay)
+        {
+            throw new NotSupportedException($"{GraphicsApi.ToDisplayName()} does not support external overlays yet.");
+        }
 
         public abstract void NewFrame();
 
@@ -54,73 +58,73 @@ namespace PhantomRender.ImGui.Renderers
                 }
                 catch (Exception ex)
                 {
-                    if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                    if (!_overlay.CatchCallbackExceptions)
                     {
                         throw;
                     }
 
-                    try { _overlayMenu.ReportRuntimeError("OnOverlayRender", ex); } catch { }
+                    try { _overlay.ReportRuntimeError("OnOverlayRender", ex); } catch { }
                 }
             }
         }
 
-        protected void RaiseRendererInitializing(IntPtr device, IntPtr windowHandle)
+        protected void RaiseRendererInitializing(nint device, nint windowHandle)
         {
-            try { _overlayMenu.RaiseRendererInitializing(this, device, windowHandle); }
+            try { _overlay.RaiseRendererInitializing(this, device, windowHandle); }
             catch (Exception ex)
             {
-                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                if (!_overlay.CatchCallbackExceptions)
                 {
                     throw;
                 }
 
-                try { _overlayMenu.ReportRuntimeError("InitializeRenderer", ex); } catch { }
+                try { _overlay.ReportRuntimeError("InitializeRenderer", ex); } catch { }
             }
         }
 
         protected void RaiseImGuiInitialized()
         {
-            try { _overlayMenu.RaiseImGuiInitialized(this); }
+            try { _overlay.RaiseImGuiInitialized(this); }
             catch (Exception ex)
             {
-                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                if (!_overlay.CatchCallbackExceptions)
                 {
                     throw;
                 }
 
-                try { _overlayMenu.ReportRuntimeError("InitializeImGui", ex); } catch { }
+                try { _overlay.ReportRuntimeError("InitializeImGui", ex); } catch { }
             }
         }
 
         protected void RenderMenuFrame()
         {
-            try { _overlayMenu.RenderFrame(this, GraphicsApi, _windowHandle); }
+            try { _overlay.RaiseRender(this, GraphicsApi, _windowHandle); }
             catch (Exception ex)
             {
-                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                if (!_overlay.CatchCallbackExceptions)
                 {
                     throw;
                 }
 
-                try { _overlayMenu.ReportRuntimeError("RenderFrame", ex); } catch { }
+                try { _overlay.ReportRuntimeError("RenderFrame", ex); } catch { }
             }
         }
 
         protected void RaiseNewFrame()
         {
-            try { _overlayMenu.RaiseNewFrame(this, GraphicsApi, _windowHandle); }
+            try { _overlay.RaiseNewFrame(this, GraphicsApi, _windowHandle); }
             catch (Exception ex)
             {
-                if (!_overlayMenu.Options.CatchUserCallbackExceptions)
+                if (!_overlay.CatchCallbackExceptions)
                 {
                     throw;
                 }
 
-                try { _overlayMenu.ReportRuntimeError("NewFrame", ex); } catch { }
+                try { _overlay.ReportRuntimeError("NewFrame", ex); } catch { }
             }
         }
 
-        protected unsafe void InitializeImGui(IntPtr windowHandle)
+        protected unsafe void InitializeImGui(nint windowHandle)
         {
             _windowHandle = windowHandle;
 
@@ -190,10 +194,10 @@ namespace PhantomRender.ImGui.Renderers
         private const uint GL_VERSION = 0x1F02;
 
         [DllImport("opengl32.dll")]
-        private static extern IntPtr glGetString(uint name);
+        private static extern nint glGetString(uint name);
 
         [DllImport("opengl32.dll")]
-        private static extern IntPtr wglGetProcAddress(string procName);
+        private static extern nint wglGetProcAddress(string procName);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void glGetIntegervDelegate(uint pname, out int data);
@@ -209,10 +213,10 @@ namespace PhantomRender.ImGui.Renderers
             try
             {
                 // Try modern way first (GL 3.0+)
-                IntPtr hModule = GetModuleHandleW("opengl32.dll");
+                nint hModule = GetModuleHandleW("opengl32.dll");
                 if (hModule != IntPtr.Zero)
                 {
-                    IntPtr glGetIntegervPtr = GetProcAddress(hModule, "glGetIntegerv");
+                    nint glGetIntegervPtr = GetProcAddress(hModule, "glGetIntegerv");
                     if (glGetIntegervPtr != IntPtr.Zero)
                     {
                         var glGetIntegerv = Marshal.GetDelegateForFunctionPointer<glGetIntegervDelegate>(glGetIntegervPtr);
@@ -228,7 +232,7 @@ namespace PhantomRender.ImGui.Renderers
             {
                 try
                 {
-                    IntPtr versionPtr = glGetString(GL_VERSION);
+                    nint versionPtr = glGetString(GL_VERSION);
                     if (versionPtr != IntPtr.Zero)
                     {
                         string versionString = Marshal.PtrToStringAnsi(versionPtr);
@@ -267,9 +271,9 @@ namespace PhantomRender.ImGui.Renderers
         }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)]
-        private static extern IntPtr GetModuleHandleW(string lpModuleName);
+        private static extern nint GetModuleHandleW(string lpModuleName);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Ansi)]
-        private static extern IntPtr GetProcAddress(IntPtr hModule, string lpProcName);
+        private static extern nint GetProcAddress(nint hModule, string lpProcName);
     }
 }

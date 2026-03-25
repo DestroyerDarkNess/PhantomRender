@@ -10,8 +10,9 @@ using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Native;
 using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core;
+using PhantomRender.ImGui.Core.Renderers;
 
-namespace PhantomRender.ImGui.Renderers
+namespace PhantomRender.ImGui.Core.Renderers
 {
     public sealed unsafe class DirectX12Renderer : RendererBase
     {
@@ -340,8 +341,8 @@ namespace PhantomRender.ImGui.Renderers
         private bool _loggedWaitingQueue;
         private bool _loggedSwapchainDesc;
 
-        public DirectX12Renderer(OverlayMenu overlayMenu)
-            : base(overlayMenu, GraphicsApi.DirectX12)
+        public DirectX12Renderer(Overlay overlay)
+            : base(overlay, GraphicsApi.DirectX12)
         {
         }
 

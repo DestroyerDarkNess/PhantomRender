@@ -2,21 +2,25 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.OpenGL3;
 using Hexa.NET.ImGui.Backends.Win32;
-using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core;
 
-namespace PhantomRender.ImGui.Renderers
+namespace PhantomRender.ImGui.Core.Renderers
 {
     public sealed class OpenGLRenderer : RendererBase
     {
         private bool _frameStarted = false;
 
-        public OpenGLRenderer(OverlayMenu overlayMenu)
-            : base(overlayMenu, GraphicsApi.OpenGL)
+        public OpenGLRenderer(Overlay overlay)
+            : base(overlay, GraphicsApi.OpenGL)
         {
         }
 
-        public override bool Initialize(IntPtr device, IntPtr windowHandle)
+        public override nint CreateExternalWindow(ExternalOverlay overlay)
+        {
+            return overlay.EnsureWindowCreated();
+        }
+
+        public override bool Initialize(nint device, nint windowHandle)
         {
             if (IsInitialized) return true;
 

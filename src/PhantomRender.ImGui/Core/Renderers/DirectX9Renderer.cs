@@ -2,19 +2,23 @@ using System;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D9;
 using Hexa.NET.ImGui.Backends.Win32;
-using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core;
 
-namespace PhantomRender.ImGui.Renderers
+namespace PhantomRender.ImGui.Core.Renderers
 {
     public sealed class DirectX9Renderer : RendererBase
     {
-        public DirectX9Renderer(OverlayMenu overlayMenu)
-            : base(overlayMenu, GraphicsApi.DirectX9)
+        public DirectX9Renderer(Overlay overlay)
+            : base(overlay, GraphicsApi.DirectX9)
         {
         }
 
-        public override unsafe bool Initialize(IntPtr device, IntPtr windowHandle)
+        public override nint CreateExternalWindow(ExternalOverlay overlay)
+        {
+            return overlay.EnsureWindowCreated();
+        }
+
+        public override unsafe bool Initialize(nint device, nint windowHandle)
         {
             if (IsInitialized) return true;
 
