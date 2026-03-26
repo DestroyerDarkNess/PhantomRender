@@ -112,14 +112,29 @@ namespace PhantomRender.ImGui.Native
             Stopwatch stopwatch = Stopwatch.StartNew();
             while (stopwatch.Elapsed < timeout && !IsShutdownRequested())
             {
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
+                {
+                    return GraphicsApi.OpenGL;
+                }
+
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
                 {
                     return GraphicsApi.DirectX9;
                 }
 
-                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX12))
                 {
-                    return GraphicsApi.OpenGL;
+                    return GraphicsApi.DirectX12;
+                }
+
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX11))
+                {
+                    return GraphicsApi.DirectX11;
+                }
+
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX10))
+                {
+                    return GraphicsApi.DirectX10;
                 }
 
                 Thread.Sleep(100);
@@ -132,6 +147,15 @@ namespace PhantomRender.ImGui.Native
         {
             switch (graphicsApi)
             {
+                case GraphicsApi.DirectX12:
+                    return new DirectX12Renderer();
+
+                case GraphicsApi.DirectX11:
+                    return new DirectX11Renderer();
+
+                case GraphicsApi.DirectX10:
+                    return new DirectX10Renderer();
+
                 case GraphicsApi.DirectX9:
                     return new DirectX9Renderer();
 

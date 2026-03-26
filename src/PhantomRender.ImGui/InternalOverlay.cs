@@ -13,6 +13,9 @@ namespace PhantomRender.ImGui
     public sealed class InternalOverlay : Overlay
     {
         private DirectX9Hook _directX9Hook;
+        private DirectX10Hook _directX10Hook;
+        private DirectX11Hook _directX11Hook;
+        private DirectX12Hook _directX12Hook;
         private OpenGLHook _openGLHook;
         private int _shutdownRequested;
         private bool _disposed;
@@ -59,6 +62,9 @@ namespace PhantomRender.ImGui
             bool started = Renderer.GraphicsApi switch
             {
                 GraphicsApi.DirectX9 => StartDirectX9(),
+                GraphicsApi.DirectX10 => StartDirectX10(),
+                GraphicsApi.DirectX11 => StartDirectX11(),
+                GraphicsApi.DirectX12 => StartDirectX12(),
                 GraphicsApi.OpenGL => StartOpenGL(),
                 _ => throw new NotSupportedException($"{Renderer.GraphicsApi.ToDisplayName()} does not have an internal overlay host."),
             };
@@ -163,6 +169,58 @@ namespace PhantomRender.ImGui
             return true;
         }
 
+        private bool StartDirectX10()
+        {
+            ValidateDxgiRenderer(GraphicsApi.DirectX10);
+
+            IntPtr swapChainAddress = DirectX10Hook.GetSwapChainAddress();
+            if (swapChainAddress == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            _directX10Hook = new DirectX10Hook(swapChainAddress);
+            _directX10Hook.OnPresent += HandleDirectX10Present;
+            _directX10Hook.OnBeforeResizeBuffers += HandleDirectX10BeforeResizeBuffers;
+            _directX10Hook.OnAfterResizeBuffers += HandleDirectX10AfterResizeBuffers;
+            _directX10Hook.Enable();
+            return true;
+        }
+
+        private bool StartDirectX11()
+        {
+            ValidateDxgiRenderer(GraphicsApi.DirectX11);
+
+            IntPtr swapChainAddress = DirectX11Hook.GetSwapChainAddress();
+            if (swapChainAddress == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            _directX11Hook = new DirectX11Hook(swapChainAddress);
+            _directX11Hook.OnPresent += HandleDirectX11Present;
+            _directX11Hook.OnResizeBuffers += HandleDirectX11ResizeBuffers;
+            _directX11Hook.Enable();
+            return true;
+        }
+
+        private bool StartDirectX12()
+        {
+            ValidateDxgiRenderer(GraphicsApi.DirectX12);
+
+            IntPtr swapChainAddress = DirectX12Hook.GetSwapChainAddress();
+            if (swapChainAddress == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            _directX12Hook = new DirectX12Hook(swapChainAddress);
+            _directX12Hook.OnPresent += HandleDirectX12Present;
+            _directX12Hook.OnResizeBuffers += HandleDirectX12ResizeBuffers;
+            _directX12Hook.Enable();
+            return true;
+        }
+
         private static DX9HookFlags GetDirectX9HookFlags(DirectX9Renderer renderer)
         {
             return renderer.InitializationEndpoint == DirectX9InitializationEndpoint.EndScene
@@ -239,6 +297,94 @@ namespace PhantomRender.ImGui
             RenderFrame();
         }
 
+        private void HandleDirectX10Present(IntPtr swapChain, uint syncInterval, uint flags)
+        {
+            RenderDxgiFrame(swapChain);
+        }
+
+        private void HandleDirectX10BeforeResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
+        {
+            if (ShutdownRequested)
+            {
+                return;
+            }
+
+            if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
+            {
+                dxgiRenderer.OnBeforeResizeBuffers(swapChain);
+            }
+        }
+
+        private void HandleDirectX10AfterResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags, int hr)
+        {
+            if (ShutdownRequested || hr < 0)
+            {
+                return;
+            }
+
+            if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
+            {
+                dxgiRenderer.OnAfterResizeBuffers(swapChain);
+            }
+        }
+
+        private void HandleDirectX11Present(IntPtr swapChain, uint syncInterval, uint flags)
+        {
+            RenderDxgiFrame(swapChain);
+        }
+
+        private void HandleDirectX11ResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
+        {
+            if (ShutdownRequested)
+            {
+                return;
+            }
+
+            if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
+            {
+                dxgiRenderer.OnBeforeResizeBuffers(swapChain);
+            }
+        }
+
+        private void HandleDirectX12Present(IntPtr swapChain, uint syncInterval, uint flags)
+        {
+            RenderDxgiFrame(swapChain);
+        }
+
+        private void HandleDirectX12ResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
+        {
+            if (ShutdownRequested)
+            {
+                return;
+            }
+
+            if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
+            {
+                dxgiRenderer.OnBeforeResizeBuffers(swapChain);
+            }
+        }
+
+        private void RenderDxgiFrame(IntPtr swapChain)
+        {
+            if (ShutdownRequested || swapChain == IntPtr.Zero)
+            {
+                return;
+            }
+
+            if (!(Renderer is IDxgiOverlayRenderer dxgiRenderer))
+            {
+                return;
+            }
+
+            if (!Renderer.IsInitialized && !dxgiRenderer.InitializeFromSwapChain(swapChain, ResolveWindowHandle()))
+            {
+                return;
+            }
+
+            dxgiRenderer.NewFrame();
+            dxgiRenderer.Render(swapChain);
+        }
+
         private IntPtr ResolveDirectX9WindowHandle(IntPtr hDestWindowOverride)
         {
             if (hDestWindowOverride != IntPtr.Zero && IsWindow(hDestWindowOverride))
@@ -281,6 +427,14 @@ namespace PhantomRender.ImGui
             return IntPtr.Zero;
         }
 
+        private void ValidateDxgiRenderer(GraphicsApi graphicsApi)
+        {
+            if (!(Renderer is IDxgiOverlayRenderer))
+            {
+                throw new InvalidOperationException($"{graphicsApi.ToDisplayName()} internal overlay requires a DXGI renderer.");
+            }
+        }
+
         private void DisposeHooks()
         {
             if (_directX9Hook != null)
@@ -299,6 +453,55 @@ namespace PhantomRender.ImGui
                 }
 
                 _directX9Hook = null;
+            }
+
+            if (_directX10Hook != null)
+            {
+                _directX10Hook.OnPresent -= HandleDirectX10Present;
+                _directX10Hook.OnBeforeResizeBuffers -= HandleDirectX10BeforeResizeBuffers;
+                _directX10Hook.OnAfterResizeBuffers -= HandleDirectX10AfterResizeBuffers;
+
+                try
+                {
+                    _directX10Hook.Dispose();
+                }
+                catch
+                {
+                }
+
+                _directX10Hook = null;
+            }
+
+            if (_directX11Hook != null)
+            {
+                _directX11Hook.OnPresent -= HandleDirectX11Present;
+                _directX11Hook.OnResizeBuffers -= HandleDirectX11ResizeBuffers;
+
+                try
+                {
+                    _directX11Hook.Dispose();
+                }
+                catch
+                {
+                }
+
+                _directX11Hook = null;
+            }
+
+            if (_directX12Hook != null)
+            {
+                _directX12Hook.OnPresent -= HandleDirectX12Present;
+                _directX12Hook.OnResizeBuffers -= HandleDirectX12ResizeBuffers;
+
+                try
+                {
+                    _directX12Hook.Dispose();
+                }
+                catch
+                {
+                }
+
+                _directX12Hook = null;
             }
 
             if (_openGLHook != null)
