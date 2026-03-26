@@ -191,15 +191,15 @@ namespace PhantomRender.ImGui
         {
             ValidateDxgiRenderer(GraphicsApi.DirectX11);
 
-            IntPtr swapChainAddress = DirectX11Hook.GetSwapChainAddress();
-            if (swapChainAddress == IntPtr.Zero)
+            _directX11Hook = DirectX11Hook.Create();
+            if (_directX11Hook == null)
             {
                 return false;
             }
 
-            _directX11Hook = new DirectX11Hook(swapChainAddress);
             _directX11Hook.OnPresent += HandleDirectX11Present;
-            _directX11Hook.OnResizeBuffers += HandleDirectX11ResizeBuffers;
+            _directX11Hook.OnBeforeResizeBuffers += HandleDirectX11BeforeResizeBuffers;
+            _directX11Hook.OnAfterResizeBuffers += HandleDirectX11AfterResizeBuffers;
             _directX11Hook.Enable();
             return true;
         }
@@ -333,7 +333,7 @@ namespace PhantomRender.ImGui
             RenderDxgiFrame(swapChain);
         }
 
-        private void HandleDirectX11ResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
+        private void HandleDirectX11BeforeResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
         {
             if (ShutdownRequested)
             {
@@ -343,6 +343,19 @@ namespace PhantomRender.ImGui
             if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
             {
                 dxgiRenderer.OnBeforeResizeBuffers(swapChain);
+            }
+        }
+
+        private void HandleDirectX11AfterResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags, int hr)
+        {
+            if (ShutdownRequested || hr < 0)
+            {
+                return;
+            }
+
+            if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
+            {
+                dxgiRenderer.OnAfterResizeBuffers(swapChain);
             }
         }
 
@@ -475,7 +488,8 @@ namespace PhantomRender.ImGui
             if (_directX11Hook != null)
             {
                 _directX11Hook.OnPresent -= HandleDirectX11Present;
-                _directX11Hook.OnResizeBuffers -= HandleDirectX11ResizeBuffers;
+                _directX11Hook.OnBeforeResizeBuffers -= HandleDirectX11BeforeResizeBuffers;
+                _directX11Hook.OnAfterResizeBuffers -= HandleDirectX11AfterResizeBuffers;
 
                 try
                 {
