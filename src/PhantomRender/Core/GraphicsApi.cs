@@ -1,13 +1,3 @@
-
-<<<<<<< TODO: Unmerged change from project 'PhantomRender (net48)', Before:
-using System;
-=======
-using PhantomRender;
-using PhantomRender.Core;
-using PhantomRender.Core;
-using PhantomRender.Core.Graphics;
-using System;
->>>>>>> After
 using System;
 using System.Runtime.InteropServices;
 
@@ -80,7 +70,7 @@ namespace PhantomRender.Core
                 _ => null,
             };
 
-            return moduleName != null && GetModuleHandleW(moduleName) != nint.Zero;
+            return moduleName != null && GetModuleHandleW(moduleName) != IntPtr.Zero;
         }
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW", SetLastError = true)]

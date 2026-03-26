@@ -6,7 +6,9 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
-    <OutputType>Library</OutputType> <!-- Or Exe depending on loader, but Library for strict DLL export -->
+    <PhantomRenderNativeOutputType Condition="'$(PhantomRenderNativeOutputType)' == ''">Library</PhantomRenderNativeOutputType>
+    <OutputType>$(PhantomRenderNativeOutputType)</OutputType>
+    <StartupObject Condition="'$(PhantomRenderNativeOutputType)' == 'Exe'">PhantomRender.ImGui.Native.Program</StartupObject>
     <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
     <AutoPublishOnBuild Condition="'$(AutoPublishOnBuild)' == ''">true</AutoPublishOnBuild>
   </PropertyGroup>
@@ -22,6 +24,16 @@
     <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
   </ItemGroup>
 
+  <ItemGroup Condition="'$(PhantomRenderNativeOutputType)' == 'Exe'">
+    <Compile Remove="Exports.cs" />
+    <None Include="Exports.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(PhantomRenderNativeOutputType)' != 'Exe'">
+    <Compile Remove="Program.cs" />
+    <None Include="Program.cs" />
+  </ItemGroup>
+
   <ItemGroup>
     <RdXmlFile Include="rd.xml" />
   </ItemGroup>
@@ -34,6 +46,7 @@
   <Target Name="CopyImGuiNativeDepsToNativeOutput" AfterTargets="AutoPublishAfterBuild" Condition="'$(AutoPublishOnBuild)' == 'true'&#xA;                   and '$(DesignTimeBuild)' != 'true'&#xA;                   and '$(IsCrossTargetingBuild)' != 'true'">
     <ItemGroup>
       <_PublishedNativeMain Include="$(_AutoPublishDir)$(MSBuildProjectName).dll" Condition="Exists('$(_AutoPublishDir)$(MSBuildProjectName).dll')" />
+      <_PublishedNativeMain Include="$(_AutoPublishDir)$(MSBuildProjectName).exe" Condition="Exists('$(_AutoPublishDir)$(MSBuildProjectName).exe')" />
       <_PublishedNativeMain Include="$(_AutoPublishDir)$(MSBuildProjectName).pdb" Condition="Exists('$(_AutoPublishDir)$(MSBuildProjectName).pdb')" />
       <_PublishedNativeDeps Include="$(_AutoPublishDir)cimgui.dll" Condition="Exists('$(_AutoPublishDir)cimgui.dll')" />
       <_PublishedNativeDeps Include="$(_AutoPublishDir)ImGuiImpl.dll" Condition="Exists('$(_AutoPublishDir)ImGuiImpl.dll')" />

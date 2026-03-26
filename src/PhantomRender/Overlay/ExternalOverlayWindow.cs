@@ -10,6 +10,16 @@ namespace PhantomRender.Overlays
         Window = 1,
     }
 
+    public sealed class OverlayWindowEventArgs : EventArgs
+    {
+        public OverlayWindowEventArgs(nint windowHandle)
+        {
+            WindowHandle = windowHandle;
+        }
+
+        public nint WindowHandle { get; }
+    }
+
     public sealed class ExternalOverlayWindow : IDisposable
     {
         private const int SW_HIDE = 0;
