@@ -54,12 +54,15 @@ namespace PhantomRender.ImGui.Core
                 case GraphicsApi.DirectX9:
                     return new DirectX9Renderer();
 
+                case GraphicsApi.DirectX10:
+                    return new DirectX10Renderer();
+
                 case GraphicsApi.DirectX11:
-                // return new DirectX11Renderer();
-#if NET5_0_OR_GREATER
+                    return new DirectX11Renderer();
+
                 case GraphicsApi.DirectX12:
-                    // return new DirectX12Renderer();
-#endif
+                    return new DirectX12Renderer();
+
                 case GraphicsApi.OpenGL:
                     return new OpenGLRenderer();
 
