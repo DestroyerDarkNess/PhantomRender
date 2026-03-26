@@ -27,6 +27,11 @@ namespace PhantomRender.ImGui.Native
                 ClickThrough = false,
             };
 
+            if (mode == ExternalOverlayMode.Overlay)
+            {
+                host.TransparentColor = OverlayColor.Black;
+            }
+
             var renderer = new DirectX9Renderer();
             using var overlay = new ExternalOverlay(renderer);
 

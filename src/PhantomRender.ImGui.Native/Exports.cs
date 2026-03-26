@@ -83,13 +83,6 @@ namespace PhantomRender.ImGui.Native
 
         private static bool InitializeInternal()
         {
-            var resolver = new DependencyResolver();
-            if (!resolver.LoadDependencies(_hModule))
-            {
-                Console.WriteLine("[PhantomRender] Failed to load native dependencies.");
-                return false;
-            }
-
             GraphicsApi graphicsApi = WaitForSupportedGraphicsApi(TimeSpan.FromSeconds(15));
             return graphicsApi switch
             {
@@ -97,6 +90,13 @@ namespace PhantomRender.ImGui.Native
                 GraphicsApi.OpenGL => InitializeOpenGL(),
                 _ => false,
             };
+
+            var resolver = new DependencyResolver();
+            if (!resolver.LoadDependencies(_hModule))
+            {
+                Console.WriteLine("[PhantomRender] Failed to load native dependencies.");
+                return false;
+            }
         }
 
         private static GraphicsApi WaitForSupportedGraphicsApi(TimeSpan timeout)

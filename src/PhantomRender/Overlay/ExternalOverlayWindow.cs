@@ -10,6 +10,69 @@ namespace PhantomRender.Overlays
         Window = 1,
     }
 
+    public readonly struct OverlayColor : IEquatable<OverlayColor>
+    {
+        public OverlayColor(byte r, byte g, byte b)
+            : this(255, r, g, b)
+        {
+        }
+
+        public OverlayColor(byte a, byte r, byte g, byte b)
+        {
+            A = a;
+            R = r;
+            G = g;
+            B = b;
+        }
+
+        public byte A { get; }
+
+        public byte R { get; }
+
+        public byte G { get; }
+
+        public byte B { get; }
+
+        public static OverlayColor Black => new OverlayColor(255, 0, 0, 0);
+
+        public static OverlayColor White => new OverlayColor(255, 255, 255, 255);
+
+        public uint ToColorRef()
+        {
+            return (uint)(R | (G << 8) | (B << 16));
+        }
+
+        public uint ToArgb()
+        {
+            return (uint)((A << 24) | (R << 16) | (G << 8) | B);
+        }
+
+        public bool Equals(OverlayColor other)
+        {
+            return A == other.A && R == other.R && G == other.G && B == other.B;
+        }
+
+        public override bool Equals(object obj)
+        {
+            return obj is OverlayColor other && Equals(other);
+        }
+
+        public override int GetHashCode()
+        {
+            return (int)ToArgb();
+        }
+
+        public static bool operator ==(OverlayColor left, OverlayColor right)
+        {
+            return left.Equals(right);
+        }
+
+        public static bool operator !=(OverlayColor left, OverlayColor right)
+        {
+            return !left.Equals(right);
+        }
+    }
+
     public sealed class OverlayWindowEventArgs : EventArgs
     {
         public OverlayWindowEventArgs(nint windowHandle)
@@ -35,16 +98,26 @@ namespace PhantomRender.Overlays
         private const int GWL_EXSTYLE = -20;
         private const uint WS_VISIBLE = 0x10000000;
         private const uint WS_POPUP = 0x80000000;
-        private const uint WS_OVERLAPPEDWINDOW = 0x00CF0000;
+        private const uint WS_CAPTION = 0x00C00000;
+        private const uint WS_THICKFRAME = 0x00040000;
+        private const uint WS_MINIMIZEBOX = 0x00020000;
+        private const uint WS_MAXIMIZEBOX = 0x00010000;
+        private const uint WS_SYSMENU = 0x00080000;
+        private const uint WS_BORDER = 0x00800000;
         private const uint WS_EX_TOPMOST = 0x00000008;
         private const uint WS_EX_TOOLWINDOW = 0x00000080;
+        private const uint WS_EX_APPWINDOW = 0x00040000;
         private const uint WS_EX_LAYERED = 0x00080000;
         private const uint WS_EX_TRANSPARENT = 0x00000020;
         private const uint WS_EX_NOACTIVATE = 0x08000000;
         private const uint WM_CLOSE = 0x0010;
         private const uint WM_DESTROY = 0x0002;
+        private const uint WM_ERASEBKGND = 0x0014;
+        private const uint WM_PAINT = 0x000F;
         private const uint PM_REMOVE = 0x0001;
         private const uint MONITOR_DEFAULTTONEAREST = 0x00000002;
+        private const uint LWA_COLORKEY = 0x00000001;
+        private const uint LWA_ALPHA = 0x00000002;
 
         private WndProcDelegate _wndProc;
         private ushort _windowClassAtom;
@@ -58,23 +131,71 @@ namespace PhantomRender.Overlays
         private int _y = 100;
         private int _width = 1280;
         private int _height = 720;
+        private string _title = "PhantomRender";
+        private ExternalOverlayMode _mode = ExternalOverlayMode.Overlay;
+        private bool _borderless;
+        private bool _resizable = true;
+        private bool _showCaption = true;
+        private bool _showMinimizeBox = true;
+        private bool _showMaximizeBox = true;
+        private bool? _showInTaskbar;
+        private double _opacity = 1.0;
+        private OverlayColor _backgroundColor = OverlayColor.Black;
+        private OverlayColor? _transparencyKey;
+        private nint _backgroundBrush;
 
         public ExternalOverlayWindow(GraphicsApi graphicsApi)
         {
             GraphicsApi = graphicsApi;
+            UpdateBackgroundBrush();
         }
 
         public GraphicsApi GraphicsApi { get; }
 
-        public string Title { get; set; } = "PhantomRender";
+        public string Title
+        {
+            get => _title;
+            set
+            {
+                string nextTitle = string.IsNullOrWhiteSpace(value) ? "PhantomRender" : value;
+                if (string.Equals(_title, nextTitle, StringComparison.Ordinal))
+                {
+                    return;
+                }
 
-        public ExternalOverlayMode Mode { get; set; } = ExternalOverlayMode.Overlay;
+                _title = nextTitle;
+                if (WindowHandle != IntPtr.Zero)
+                {
+                    SetWindowTextW(WindowHandle, _title);
+                }
+            }
+        }
+
+        public ExternalOverlayMode Mode
+        {
+            get => _mode;
+            set
+            {
+                if (_mode == value)
+                {
+                    return;
+                }
+
+                _mode = value;
+                RefreshWindowStyles();
+            }
+        }
 
         public bool ClickThrough
         {
             get => _clickThrough;
             set
             {
+                if (_clickThrough == value)
+                {
+                    return;
+                }
+
                 _clickThrough = value;
                 RefreshWindowStyles();
             }
@@ -85,7 +206,159 @@ namespace PhantomRender.Overlays
             get => _topMost;
             set
             {
+                if (_topMost == value)
+                {
+                    return;
+                }
+
                 _topMost = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool Borderless
+        {
+            get => _borderless;
+            set
+            {
+                if (_borderless == value)
+                {
+                    return;
+                }
+
+                _borderless = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool Resizable
+        {
+            get => _resizable;
+            set
+            {
+                if (_resizable == value)
+                {
+                    return;
+                }
+
+                _resizable = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool ShowCaption
+        {
+            get => _showCaption;
+            set
+            {
+                if (_showCaption == value)
+                {
+                    return;
+                }
+
+                _showCaption = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool ShowMinimizeBox
+        {
+            get => _showMinimizeBox;
+            set
+            {
+                if (_showMinimizeBox == value)
+                {
+                    return;
+                }
+
+                _showMinimizeBox = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool ShowMaximizeBox
+        {
+            get => _showMaximizeBox;
+            set
+            {
+                if (_showMaximizeBox == value)
+                {
+                    return;
+                }
+
+                _showMaximizeBox = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public bool ShowInTaskbar
+        {
+            get => _showInTaskbar ?? _mode == ExternalOverlayMode.Window;
+            set
+            {
+                if (_showInTaskbar.HasValue && _showInTaskbar.Value == value)
+                {
+                    return;
+                }
+
+                _showInTaskbar = value;
+                RefreshWindowStyles();
+            }
+        }
+
+        public double Opacity
+        {
+            get => _opacity;
+            set
+            {
+                double next = value;
+                if (next < 0.0)
+                {
+                    next = 0.0;
+                }
+                else if (next > 1.0)
+                {
+                    next = 1.0;
+                }
+
+                if (Math.Abs(_opacity - next) < double.Epsilon)
+                {
+                    return;
+                }
+
+                _opacity = next;
+                RefreshWindowStyles();
+            }
+        }
+
+        public OverlayColor BackgroundColor
+        {
+            get => _backgroundColor;
+            set
+            {
+                if (_backgroundColor == value)
+                {
+                    return;
+                }
+
+                _backgroundColor = value;
+                UpdateBackgroundBrush();
+                InvalidateWindow();
+            }
+        }
+
+        public OverlayColor? TransparencyKey
+        {
+            get => _transparencyKey;
+            set
+            {
+                if (_transparencyKey.HasValue == value.HasValue &&
+                    (!_transparencyKey.HasValue || _transparencyKey.Value == value.Value))
+                {
+                    return;
+                }
+
+                _transparencyKey = value;
                 RefreshWindowStyles();
             }
         }
@@ -160,6 +433,7 @@ namespace PhantomRender.Overlays
                 return WindowHandle;
             }
 
+            _isClosed = false;
             _wndProc = WindowProc;
             _windowClassName = "PhantomRender.ExternalOverlay." + Guid.NewGuid().ToString("N");
 
@@ -169,6 +443,7 @@ namespace PhantomRender.Overlays
                 lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_wndProc),
                 hInstance = GetModuleHandleW(null),
                 lpszClassName = _windowClassName,
+                hbrBackground = IntPtr.Zero,
             };
 
             _windowClassAtom = RegisterClassExW(ref wndClass);
@@ -180,7 +455,7 @@ namespace PhantomRender.Overlays
             WindowHandle = CreateWindowExW(
                 GetWindowExStyle(),
                 _windowClassName,
-                Title,
+                _title,
                 GetWindowStyle(),
                 _x,
                 _y,
@@ -298,8 +573,10 @@ namespace PhantomRender.Overlays
 
             nint handle = WindowHandle;
             WindowHandle = IntPtr.Zero;
+            _visible = false;
+            _isClosed = true;
 
-            DestroyWindow(handle);
+            DestroyWindowNative(handle);
 
             if (_windowClassAtom != 0)
             {
@@ -307,6 +584,7 @@ namespace PhantomRender.Overlays
                 _windowClassAtom = 0;
             }
 
+            ReleaseBackgroundBrush();
             WindowDestroyed?.Invoke(this, new OverlayWindowEventArgs(handle));
         }
 
@@ -319,6 +597,7 @@ namespace PhantomRender.Overlays
 
             _disposed = true;
             DestroyWindow();
+            ReleaseBackgroundBrush();
         }
 
         private void RefreshWindowStyles()
@@ -330,6 +609,7 @@ namespace PhantomRender.Overlays
 
             SetWindowLongPtr(WindowHandle, GWL_STYLE, (nint)(long)GetWindowStyle());
             SetWindowLongPtr(WindowHandle, GWL_EXSTYLE, (nint)(long)GetWindowExStyle());
+            ApplyLayeredWindowAttributes();
             SetWindowPos(
                 WindowHandle,
                 _topMost ? new IntPtr(HWND_TOPMOST) : new IntPtr(HWND_NOTOPMOST),
@@ -338,11 +618,87 @@ namespace PhantomRender.Overlays
                 0,
                 0,
                 SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED | (_visible ? SWP_SHOWWINDOW : 0));
+            InvalidateWindow();
+        }
+
+        private void ApplyLayeredWindowAttributes()
+        {
+            if (WindowHandle == IntPtr.Zero || !RequiresLayeredStyle())
+            {
+                return;
+            }
+
+            uint flags = 0;
+            uint colorKey = 0;
+            byte alpha = (byte)Math.Round(_opacity * 255.0);
+
+            if (_transparencyKey.HasValue)
+            {
+                flags |= LWA_COLORKEY;
+                colorKey = _transparencyKey.Value.ToColorRef();
+            }
+
+            if (_opacity < 1.0 || _mode == ExternalOverlayMode.Overlay)
+            {
+                flags |= LWA_ALPHA;
+            }
+
+            if (flags != 0)
+            {
+                SetLayeredWindowAttributes(WindowHandle, colorKey, alpha, flags);
+            }
+        }
+
+        private bool RequiresLayeredStyle()
+        {
+            return _mode == ExternalOverlayMode.Overlay || _transparencyKey.HasValue || _opacity < 1.0;
         }
 
         private uint GetWindowStyle()
         {
-            return Mode == ExternalOverlayMode.Overlay ? WS_POPUP | WS_VISIBLE : WS_OVERLAPPEDWINDOW | WS_VISIBLE;
+            if (_mode == ExternalOverlayMode.Overlay)
+            {
+                return WS_POPUP | WS_VISIBLE;
+            }
+
+            if (_borderless)
+            {
+                return WS_POPUP | WS_VISIBLE;
+            }
+
+            uint style = WS_VISIBLE;
+
+            if (_showCaption)
+            {
+                style |= WS_CAPTION;
+            }
+
+            if (_resizable)
+            {
+                style |= WS_THICKFRAME;
+            }
+
+            if (_showMinimizeBox)
+            {
+                style |= WS_MINIMIZEBOX;
+            }
+
+            if (_showMaximizeBox)
+            {
+                style |= WS_MAXIMIZEBOX;
+            }
+
+            if (_showCaption || _showMinimizeBox || _showMaximizeBox)
+            {
+                style |= WS_SYSMENU;
+            }
+
+            if (!_showCaption && !_resizable && !_showMinimizeBox && !_showMaximizeBox)
+            {
+                style |= WS_BORDER;
+            }
+
+            return style;
         }
 
         private uint GetWindowExStyle()
@@ -354,17 +710,48 @@ namespace PhantomRender.Overlays
                 exStyle |= WS_EX_TOPMOST;
             }
 
-            if (Mode == ExternalOverlayMode.Overlay)
+            if (RequiresLayeredStyle())
             {
-                exStyle |= WS_EX_TOOLWINDOW | WS_EX_LAYERED | WS_EX_NOACTIVATE;
-
-                if (_clickThrough)
-                {
-                    exStyle |= WS_EX_TRANSPARENT;
-                }
+                exStyle |= WS_EX_LAYERED;
             }
 
+            if (_clickThrough)
+            {
+                exStyle |= WS_EX_TRANSPARENT;
+            }
+
+            if (_mode == ExternalOverlayMode.Overlay)
+            {
+                exStyle |= WS_EX_NOACTIVATE;
+            }
+
+            exStyle |= ShowInTaskbar ? WS_EX_APPWINDOW : WS_EX_TOOLWINDOW;
             return exStyle;
+        }
+
+        private void UpdateBackgroundBrush()
+        {
+            ReleaseBackgroundBrush();
+            _backgroundBrush = CreateSolidBrush(_backgroundColor.ToColorRef());
+        }
+
+        private void ReleaseBackgroundBrush()
+        {
+            if (_backgroundBrush == IntPtr.Zero)
+            {
+                return;
+            }
+
+            DeleteObject(_backgroundBrush);
+            _backgroundBrush = IntPtr.Zero;
+        }
+
+        private void InvalidateWindow()
+        {
+            if (WindowHandle != IntPtr.Zero)
+            {
+                InvalidateRect(WindowHandle, IntPtr.Zero, true);
+            }
         }
 
         private nint WindowProc(nint hWnd, uint msg, nint wParam, nint lParam)
@@ -372,18 +759,51 @@ namespace PhantomRender.Overlays
             switch (msg)
             {
                 case WM_CLOSE:
-                    _visible = false;
-                    _isClosed = true;
-                    DestroyWindow(hWnd);
+                    DestroyWindow();
                     return 0;
 
                 case WM_DESTROY:
                     _visible = false;
                     _isClosed = true;
                     return 0;
+
+                case WM_ERASEBKGND:
+                    return PaintBackground(hWnd, wParam);
+
+                case WM_PAINT:
+                    return PaintWindow(hWnd);
             }
 
             return DefWindowProcW(hWnd, msg, wParam, lParam);
+        }
+
+        private nint PaintBackground(nint hWnd, nint hdc)
+        {
+            if (hdc == IntPtr.Zero || _backgroundBrush == IntPtr.Zero)
+            {
+                return 0;
+            }
+
+            if (!GetClientRect(hWnd, out RECT rect))
+            {
+                return 0;
+            }
+
+            FillRect(hdc, ref rect, _backgroundBrush);
+            return 1;
+        }
+
+        private nint PaintWindow(nint hWnd)
+        {
+            PAINTSTRUCT paint = default;
+            nint hdc = BeginPaint(hWnd, ref paint);
+            if (hdc != IntPtr.Zero)
+            {
+                PaintBackground(hWnd, hdc);
+                EndPaint(hWnd, ref paint);
+            }
+
+            return 0;
         }
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
@@ -431,6 +851,21 @@ namespace PhantomRender.Overlays
             public uint lPrivate;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PAINTSTRUCT
+        {
+            public nint hdc;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool fErase;
+            public RECT rcPaint;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool fRestore;
+            [MarshalAs(UnmanagedType.Bool)]
+            public bool fIncUpdate;
+            [MarshalAs(UnmanagedType.ByValArray, SizeConst = 32)]
+            public byte[] rgbReserved;
+        }
+
         private delegate nint WndProcDelegate(nint hWnd, uint msg, nint wParam, nint lParam);
 
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterClassExW", SetLastError = true)]
@@ -458,9 +893,9 @@ namespace PhantomRender.Overlays
         [DllImport("user32.dll", EntryPoint = "DefWindowProcW")]
         private static extern nint DefWindowProcW(nint hWnd, uint msg, nint wParam, nint lParam);
 
-        [DllImport("user32.dll", SetLastError = true)]
+        [DllImport("user32.dll", EntryPoint = "DestroyWindow", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool DestroyWindow(nint hWnd);
+        private static extern bool DestroyWindowNative(nint hWnd);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -476,6 +911,22 @@ namespace PhantomRender.Overlays
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool GetWindowRect(nint hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetClientRect(nint hWnd, out RECT lpRect);
+
+        [DllImport("user32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetWindowTextW(nint hWnd, string lpString);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool SetLayeredWindowAttributes(nint hwnd, uint crKey, byte bAlpha, uint dwFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool InvalidateRect(nint hWnd, nint lpRect, [MarshalAs(UnmanagedType.Bool)] bool bErase);
 
         [DllImport("user32.dll")]
         [return: MarshalAs(UnmanagedType.Bool)]
@@ -494,6 +945,23 @@ namespace PhantomRender.Overlays
 
         [DllImport("user32.dll")]
         private static extern nint MonitorFromWindow(nint hwnd, uint dwFlags);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern nint BeginPaint(nint hWnd, ref PAINTSTRUCT lpPaint);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool EndPaint(nint hWnd, ref PAINTSTRUCT lpPaint);
+
+        [DllImport("user32.dll", SetLastError = true)]
+        private static extern int FillRect(nint hDC, [In] ref RECT lprc, nint hbr);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        private static extern nint CreateSolidBrush(uint color);
+
+        [DllImport("gdi32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool DeleteObject(nint hObject);
 
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode, EntryPoint = "GetModuleHandleW")]
         private static extern nint GetModuleHandleW(string lpModuleName);

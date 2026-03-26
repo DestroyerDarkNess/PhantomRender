@@ -26,6 +26,7 @@ namespace PhantomRender.Overlays
         private BeginSceneDelegate _beginScene;
         private EndSceneDelegate _endScene;
         private PresentDelegate _present;
+        private OverlayColor? _transparentColor;
 
         public DirectX9ExternalOverlayHost()
         {
@@ -60,6 +61,22 @@ namespace PhantomRender.Overlays
         {
             get => Window.TopMost;
             set => Window.TopMost = value;
+        }
+
+        public OverlayColor BackgroundColor
+        {
+            get => Window.BackgroundColor;
+            set => Window.BackgroundColor = value;
+        }
+
+        public OverlayColor? TransparentColor
+        {
+            get => _transparentColor;
+            set
+            {
+                _transparentColor = value;
+                Window.TransparencyKey = value;
+            }
         }
 
         public event EventHandler<RenderEventArgs> DeviceCreated;
@@ -112,7 +129,7 @@ namespace PhantomRender.Overlays
                     }
                 }
 
-                _clear(_device, 0, IntPtr.Zero, D3DCLEAR_TARGET, 0x00000000, 1.0f, 0);
+                _clear(_device, 0, IntPtr.Zero, D3DCLEAR_TARGET, GetClearColorValue(), 1.0f, 0);
 
                 if (_beginScene(_device) >= 0)
                 {
@@ -199,6 +216,12 @@ namespace PhantomRender.Overlays
 
             AfterReset?.Invoke(this, new ResetEventArgs(_device, Window.WindowHandle, width, height, presentParameters));
             return true;
+        }
+
+        private uint GetClearColorValue()
+        {
+            OverlayColor color = _transparentColor ?? Window.BackgroundColor;
+            return color.ToArgb();
         }
 
         private static bool TryCreateDirect3D9Device(nint windowHandle, int width, int height, out IntPtr d3d9, out IntPtr device)
