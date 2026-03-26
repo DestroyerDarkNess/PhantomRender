@@ -9,17 +9,14 @@ namespace PhantomRender.ImGui.Core.Renderers
 {
     public sealed unsafe class DirectX11Renderer : DxgiRendererBase
     {
-        private const int VTABLE_IUNKNOWN_QUERY_INTERFACE = 0;
         private const int VTABLE_IDXGI_SWAPCHAIN_GET_BUFFER = 9;
         private const int VTABLE_ID3D11DEVICE_CREATE_RENDER_TARGET_VIEW = 9;
         private const int VTABLE_ID3D11DEVICE_GET_IMMEDIATE_CONTEXT = 40;
-        private const int VTABLE_ID3D11DEVICECONTEXT_OM_SET_RENDER_TARGETS = 33;
         private const int VTABLE_ID3D11DEVICECONTEXT_OM_GET_RENDER_TARGETS = 89;
-        private const int VTABLE_ID3D11MULTITHREAD_SET_MULTITHREAD_PROTECTED = 5;
+        private const int VTABLE_ID3D11DEVICECONTEXT_OM_SET_RENDER_TARGETS = 33;
 
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
         private static readonly Guid IID_ID3D11Texture2D = new Guid("6f15aaf2-d208-4e89-9ab4-489535d34f9c");
-        private static readonly Guid IID_ID3D11Multithread = new Guid("9b7e4e00-342c-4106-a19f-4f2704f689f0");
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void GetImmediateContextDelegate(nint device, out nint immediateContext);
@@ -31,22 +28,15 @@ namespace PhantomRender.ImGui.Core.Renderers
         private delegate int CreateRenderTargetViewDelegate(nint device, nint resource, nint desc, out nint renderTargetView);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int QueryInterfaceDelegate(nint instance, ref Guid riid, out nint objectPointer);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private unsafe delegate void OMGetRenderTargetsDelegate(nint deviceContext, uint numViews, nint* renderTargetViews, out nint depthStencilView);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private unsafe delegate void OMSetRenderTargetsDelegate(nint deviceContext, uint numViews, nint* renderTargetViews, nint depthStencilView);
 
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int SetMultithreadProtectedDelegate(nint multithread, int multithreadProtected);
-
         private nint _device;
         private nint _deviceContext;
         private nint _renderTargetView;
         private nint _renderTargetSwapChain;
-        private bool _renderTargetDirty;
 
         public DirectX11Renderer()
             : base(GraphicsApi.DirectX11)
@@ -89,10 +79,6 @@ namespace PhantomRender.ImGui.Core.Renderers
                 _device = device;
                 _deviceContext = immediateContext;
                 immediateContext = IntPtr.Zero;
-
-                TryEnableMultithreadProtection(_deviceContext);
-
-                _renderTargetDirty = true;
                 IsInitialized = true;
                 return true;
             }
@@ -160,7 +146,15 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             if (swapChain != IntPtr.Zero)
             {
-                SwapChainHandle = swapChain;
+                if (SwapChainHandle == IntPtr.Zero)
+                {
+                    SwapChainHandle = swapChain;
+                }
+                else if (swapChain != SwapChainHandle)
+                {
+                    FrameStarted = false;
+                    return;
+                }
             }
 
             try
@@ -172,11 +166,6 @@ namespace PhantomRender.ImGui.Core.Renderers
                         return;
                     }
 
-                    if (!EnsureDeviceBinding(SwapChainHandle))
-                    {
-                        return;
-                    }
-
                     if (!EnsureRenderTarget(SwapChainHandle))
                     {
                         return;
@@ -184,12 +173,15 @@ namespace PhantomRender.ImGui.Core.Renderers
 
                     nint previousRenderTarget = IntPtr.Zero;
                     nint previousDepthStencil = IntPtr.Zero;
-                    bool restoreState = false;
 
                     try
                     {
-                        restoreState = TryBackupOutputMergerState(&previousRenderTarget, 1, out previousDepthStencil);
-                        if (!BindOverlayRenderTarget())
+                        if (!TryBackupOutputMergerState(out previousRenderTarget, out previousDepthStencil))
+                        {
+                            return;
+                        }
+
+                        if (!BindRenderTarget(_renderTargetView))
                         {
                             return;
                         }
@@ -199,11 +191,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                     }
                     finally
                     {
-                        if (restoreState)
-                        {
-                            RestoreOutputMergerState(&previousRenderTarget, 1, previousDepthStencil);
-                        }
-
+                        RestoreOutputMergerState(previousRenderTarget, previousDepthStencil);
                         ReleaseComObject(previousRenderTarget);
                         ReleaseComObject(previousDepthStencil);
                     }
@@ -223,25 +211,26 @@ namespace PhantomRender.ImGui.Core.Renderers
         {
             base.OnBeforeResizeBuffers(swapChain);
             ReleaseRenderTarget();
-            _renderTargetDirty = true;
         }
 
         public override void OnAfterResizeBuffers(nint swapChain)
         {
             base.OnAfterResizeBuffers(swapChain);
-            SwapChainHandle = swapChain != IntPtr.Zero ? swapChain : SwapChainHandle;
-            _renderTargetDirty = true;
+            if (swapChain != IntPtr.Zero)
+            {
+                SwapChainHandle = swapChain;
+            }
+
+            ReleaseRenderTarget();
         }
 
         public override void OnLostDevice()
         {
             ReleaseRenderTarget();
-            _renderTargetDirty = true;
         }
 
         public override void OnResetDevice()
         {
-            _renderTargetDirty = true;
         }
 
         public override void Dispose()
@@ -292,101 +281,6 @@ namespace PhantomRender.ImGui.Core.Renderers
             return immediateContext;
         }
 
-        private static bool TryEnableMultithreadProtection(nint deviceContext)
-        {
-            if (deviceContext == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            nint multithread = IntPtr.Zero;
-            try
-            {
-                nint queryInterfaceAddress = GetVTableFunctionAddress(deviceContext, VTABLE_IUNKNOWN_QUERY_INTERFACE);
-                if (queryInterfaceAddress == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                var queryInterface = Marshal.GetDelegateForFunctionPointer<QueryInterfaceDelegate>(queryInterfaceAddress);
-                Guid iid = IID_ID3D11Multithread;
-                if (queryInterface(deviceContext, ref iid, out multithread) < 0 || multithread == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                nint setMultithreadProtectedAddress = GetVTableFunctionAddress(multithread, VTABLE_ID3D11MULTITHREAD_SET_MULTITHREAD_PROTECTED);
-                if (setMultithreadProtectedAddress == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                var setMultithreadProtected = Marshal.GetDelegateForFunctionPointer<SetMultithreadProtectedDelegate>(setMultithreadProtectedAddress);
-                setMultithreadProtected(multithread, 1);
-                return true;
-            }
-            finally
-            {
-                ReleaseComObject(multithread);
-            }
-        }
-
-        private bool EnsureDeviceBinding(nint swapChain)
-        {
-            nint swapChainDevice = IntPtr.Zero;
-            nint newContext = IntPtr.Zero;
-
-            try
-            {
-                if (!TryGetDeviceFromSwapChain(swapChain, out swapChainDevice) || swapChainDevice == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                if (swapChainDevice == _device)
-                {
-                    return true;
-                }
-
-                newContext = GetImmediateContext(swapChainDevice);
-                if (newContext == IntPtr.Zero)
-                {
-                    return false;
-                }
-
-                ImGuiImplD3D11.SetCurrentContext(Context);
-                ImGuiImplD3D11.Shutdown();
-
-                if (!ImGuiImplD3D11.Init((ID3D11Device*)swapChainDevice, (ID3D11DeviceContext*)newContext))
-                {
-                    return false;
-                }
-
-                ReleaseRenderTarget();
-                ReleaseComObject(_deviceContext);
-                ReleaseComObject(_device);
-
-                _device = swapChainDevice;
-                _deviceContext = newContext;
-                swapChainDevice = IntPtr.Zero;
-                newContext = IntPtr.Zero;
-
-                TryEnableMultithreadProtection(_deviceContext);
-                _renderTargetDirty = true;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.EnsureDeviceBinding", ex);
-                return false;
-            }
-            finally
-            {
-                ReleaseComObject(newContext);
-                ReleaseComObject(swapChainDevice);
-            }
-        }
-
         private bool EnsureRenderTarget(nint swapChain)
         {
             if (swapChain == IntPtr.Zero || _device == IntPtr.Zero)
@@ -394,7 +288,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                 return false;
             }
 
-            if (!_renderTargetDirty && _renderTargetView != IntPtr.Zero && _renderTargetSwapChain == swapChain)
+            if (_renderTargetView != IntPtr.Zero && _renderTargetSwapChain == swapChain)
             {
                 return true;
             }
@@ -415,14 +309,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                 }
 
                 _renderTargetSwapChain = swapChain;
-                _renderTargetDirty = false;
                 return true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.EnsureRenderTarget", ex);
-                ReleaseRenderTarget();
-                return false;
             }
             finally
             {
@@ -463,8 +350,9 @@ namespace PhantomRender.ImGui.Core.Renderers
             return createRenderTargetView(device, resource, IntPtr.Zero, out renderTargetView) >= 0 && renderTargetView != IntPtr.Zero;
         }
 
-        private unsafe bool TryBackupOutputMergerState(nint* renderTargetViews, uint numViews, out nint depthStencilView)
+        private unsafe bool TryBackupOutputMergerState(out nint renderTargetView, out nint depthStencilView)
         {
+            renderTargetView = IntPtr.Zero;
             depthStencilView = IntPtr.Zero;
             if (_deviceContext == IntPtr.Zero)
             {
@@ -478,13 +366,15 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
 
             var omGetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMGetRenderTargetsDelegate>(omGetRenderTargetsAddress);
-            omGetRenderTargets(_deviceContext, numViews, renderTargetViews, out depthStencilView);
+            nint currentRenderTargetView = IntPtr.Zero;
+            omGetRenderTargets(_deviceContext, 1, &currentRenderTargetView, out depthStencilView);
+            renderTargetView = currentRenderTargetView;
             return true;
         }
 
-        private unsafe bool BindOverlayRenderTarget()
+        private unsafe bool BindRenderTarget(nint renderTargetView)
         {
-            if (_deviceContext == IntPtr.Zero || _renderTargetView == IntPtr.Zero)
+            if (_deviceContext == IntPtr.Zero || renderTargetView == IntPtr.Zero)
             {
                 return false;
             }
@@ -496,12 +386,12 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
 
             var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddress);
-            nint renderTargetView = _renderTargetView;
-            omSetRenderTargets(_deviceContext, 1, &renderTargetView, IntPtr.Zero);
+            nint currentRenderTargetView = renderTargetView;
+            omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, IntPtr.Zero);
             return true;
         }
 
-        private unsafe void RestoreOutputMergerState(nint* renderTargetViews, uint numViews, nint depthStencilView)
+        private unsafe void RestoreOutputMergerState(nint renderTargetView, nint depthStencilView)
         {
             if (_deviceContext == IntPtr.Zero)
             {
@@ -515,7 +405,8 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
 
             var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddress);
-            omSetRenderTargets(_deviceContext, numViews, renderTargetViews, depthStencilView);
+            nint currentRenderTargetView = renderTargetView;
+            omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, depthStencilView);
         }
 
         private void ReleaseRenderTarget()

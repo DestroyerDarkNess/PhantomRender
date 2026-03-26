@@ -17,6 +17,8 @@ namespace PhantomRender.ImGui
         private DirectX11Hook _directX11Hook;
         private DirectX12Hook _directX12Hook;
         private OpenGLHook _openGLHook;
+        private IntPtr _directX11SwapChainHandle;
+        private IntPtr _directX11WindowHandle;
         private int _shutdownRequested;
         private bool _disposed;
 
@@ -38,6 +40,8 @@ namespace PhantomRender.ImGui
         public IntPtr DependencyModuleHandle { get; set; }
 
         public DX9HookFlags? DirectX9HookFlagsOverride { get; set; }
+
+        public bool EnableDirectX11ResizeBuffersHook { get; set; }
 
         public Func<IntPtr> WindowHandleResolver { get; set; }
 
@@ -191,15 +195,22 @@ namespace PhantomRender.ImGui
         {
             ValidateDxgiRenderer(GraphicsApi.DirectX11);
 
-            _directX11Hook = DirectX11Hook.Create();
+            _directX11Hook = DirectX11Hook.Create(EnableDirectX11ResizeBuffersHook);
             if (_directX11Hook == null)
             {
                 return false;
             }
 
+            _directX11SwapChainHandle = IntPtr.Zero;
+            _directX11WindowHandle = IntPtr.Zero;
             _directX11Hook.OnPresent += HandleDirectX11Present;
-            _directX11Hook.OnBeforeResizeBuffers += HandleDirectX11BeforeResizeBuffers;
-            _directX11Hook.OnAfterResizeBuffers += HandleDirectX11AfterResizeBuffers;
+
+            if (EnableDirectX11ResizeBuffersHook)
+            {
+                _directX11Hook.OnBeforeResizeBuffers += HandleDirectX11BeforeResizeBuffers;
+                _directX11Hook.OnAfterResizeBuffers += HandleDirectX11AfterResizeBuffers;
+            }
+
             _directX11Hook.Enable();
             return true;
         }
@@ -330,6 +341,11 @@ namespace PhantomRender.ImGui
 
         private void HandleDirectX11Present(IntPtr swapChain, uint syncInterval, uint flags)
         {
+            if (!TryAcceptDirectX11SwapChain(swapChain))
+            {
+                return;
+            }
+
             RenderDxgiFrame(swapChain);
         }
 
@@ -389,13 +405,53 @@ namespace PhantomRender.ImGui
                 return;
             }
 
-            if (!Renderer.IsInitialized && !dxgiRenderer.InitializeFromSwapChain(swapChain, ResolveWindowHandle()))
+            IntPtr dx11WindowHandle = Renderer.GraphicsApi == GraphicsApi.DirectX11 ? _directX11WindowHandle : IntPtr.Zero;
+            if (!Renderer.IsInitialized && !dxgiRenderer.InitializeFromSwapChain(swapChain, dx11WindowHandle))
             {
                 return;
             }
 
             dxgiRenderer.NewFrame();
             dxgiRenderer.Render(swapChain);
+        }
+
+        private bool TryAcceptDirectX11SwapChain(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero || _directX11Hook == null)
+            {
+                return false;
+            }
+
+            if (_directX11SwapChainHandle != IntPtr.Zero)
+            {
+                return swapChain == _directX11SwapChainHandle;
+            }
+
+            if (!_directX11Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (!IsWindow(outputWindow))
+            {
+                return false;
+            }
+
+            outputWindow = GetAncestor(outputWindow, GA_ROOT);
+            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow) || !IsWindowVisible(outputWindow))
+            {
+                return false;
+            }
+
+            IntPtr preferredWindow = ResolveWindowHandle();
+            if (preferredWindow != IntPtr.Zero && outputWindow != preferredWindow)
+            {
+                return false;
+            }
+
+            _directX11SwapChainHandle = swapChain;
+            _directX11WindowHandle = outputWindow;
+            return true;
         }
 
         private IntPtr ResolveDirectX9WindowHandle(IntPtr hDestWindowOverride)
@@ -493,13 +549,15 @@ namespace PhantomRender.ImGui
 
                 try
                 {
-                    _directX11Hook.Dispose();
+                _directX11Hook.Dispose();
                 }
                 catch
                 {
                 }
 
                 _directX11Hook = null;
+                _directX11SwapChainHandle = IntPtr.Zero;
+                _directX11WindowHandle = IntPtr.Zero;
             }
 
             if (_directX12Hook != null)
@@ -550,6 +608,15 @@ namespace PhantomRender.ImGui
         private static extern bool IsWindow(IntPtr hWnd);
 
         [DllImport("user32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool IsWindowVisible(IntPtr hWnd);
+
+        [DllImport("user32.dll")]
+        private static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+        [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
+
+        private const uint GA_ROOT = 2;
     }
 }

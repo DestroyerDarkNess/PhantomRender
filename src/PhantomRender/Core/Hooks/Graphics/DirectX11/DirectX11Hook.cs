@@ -12,16 +12,10 @@ namespace PhantomRender.Core.Hooks.Graphics
         private const int VTABLE_PRESENT = 8;
         private const int VTABLE_GET_DESC = 12;
         private const int VTABLE_RESIZE_BUFFERS = 13;
-        private const int VTABLE_PRESENT1 = 22;
-
-        private static readonly Guid IID_IDXGISwapChain1 = new Guid("790a45f7-0d42-4876-983a-0a55cfe6f4aa");
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
-
-        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
-        private delegate int Present1Delegate(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int ResizeBuffersDelegate(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags);
@@ -39,7 +33,7 @@ namespace PhantomRender.Core.Hooks.Graphics
         private readonly HookEngine _hookEngine;
         private readonly PresentDelegate _originalPresent;
         private readonly ResizeBuffersDelegate _originalResizeBuffers;
-        private Present1Delegate _originalPresent1;
+        private readonly bool _hookResizeBuffers;
 
         [ThreadStatic]
         private static int _presentDepth;
@@ -47,7 +41,7 @@ namespace PhantomRender.Core.Hooks.Graphics
         [ThreadStatic]
         private static int _resizeDepth;
 
-        public DirectX11Hook(IntPtr swapChainAddress)
+        public DirectX11Hook(IntPtr swapChainAddress, bool hookResizeBuffers = false)
         {
             if (swapChainAddress == IntPtr.Zero)
             {
@@ -58,12 +52,15 @@ namespace PhantomRender.Core.Hooks.Graphics
 
             IntPtr vTable = MemoryUtils.ReadIntPtr(swapChainAddress);
             IntPtr presentAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_PRESENT * IntPtr.Size);
-            IntPtr resizeBuffersAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_RESIZE_BUFFERS * IntPtr.Size);
 
             _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddress, PresentHook);
-            _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddress, ResizeBuffersHook);
+            _hookResizeBuffers = hookResizeBuffers;
 
-            TryHookPresent1(swapChainAddress);
+            if (hookResizeBuffers)
+            {
+                IntPtr resizeBuffersAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_RESIZE_BUFFERS * IntPtr.Size);
+                _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddress, ResizeBuffersHook);
+            }
         }
 
         public void Enable()
@@ -83,7 +80,7 @@ namespace PhantomRender.Core.Hooks.Graphics
             GC.SuppressFinalize(this);
         }
 
-        public static DirectX11Hook Create()
+        public static DirectX11Hook Create(bool hookResizeBuffers = false)
         {
             IntPtr swapChain = GetSwapChainAddress();
             if (swapChain == IntPtr.Zero)
@@ -93,7 +90,7 @@ namespace PhantomRender.Core.Hooks.Graphics
 
             try
             {
-                return new DirectX11Hook(swapChain);
+                return new DirectX11Hook(swapChain, hookResizeBuffers);
             }
             finally
             {
@@ -237,35 +234,13 @@ namespace PhantomRender.Core.Hooks.Graphics
             }
         }
 
-        private int Present1Hook(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters)
-        {
-            if (_presentDepth > 0)
-            {
-                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
-            }
-
-            _presentDepth++;
-            try
-            {
-                try
-                {
-                    OnPresent?.Invoke(swapChain, syncInterval, flags);
-                }
-                catch (Exception ex)
-                {
-                    Console.WriteLine($"[PhantomRender] DX11 Present1 error: {ex}");
-                }
-
-                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
-            }
-            finally
-            {
-                _presentDepth--;
-            }
-        }
-
         private int ResizeBuffersHook(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
         {
+            if (!_hookResizeBuffers || _originalResizeBuffers == null)
+            {
+                return 0;
+            }
+
             if (_resizeDepth > 0)
             {
                 return _originalResizeBuffers(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
@@ -299,39 +274,6 @@ namespace PhantomRender.Core.Hooks.Graphics
             finally
             {
                 _resizeDepth--;
-            }
-        }
-
-        private void TryHookPresent1(IntPtr swapChain)
-        {
-            IntPtr swapChain1 = IntPtr.Zero;
-            try
-            {
-                Guid iid = IID_IDXGISwapChain1;
-                if (Marshal.QueryInterface(swapChain, ref iid, out swapChain1) < 0 || swapChain1 == IntPtr.Zero)
-                {
-                    return;
-                }
-
-                IntPtr vTable = MemoryUtils.ReadIntPtr(swapChain1);
-                IntPtr present1Address = MemoryUtils.ReadIntPtr(vTable + VTABLE_PRESENT1 * IntPtr.Size);
-                if (present1Address == IntPtr.Zero)
-                {
-                    return;
-                }
-
-                _originalPresent1 = _hookEngine.CreateHook<Present1Delegate>(present1Address, Present1Hook);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] DX11 Present1 hook init failed: {ex}");
-            }
-            finally
-            {
-                if (swapChain1 != IntPtr.Zero)
-                {
-                    Marshal.Release(swapChain1);
-                }
             }
         }
 
