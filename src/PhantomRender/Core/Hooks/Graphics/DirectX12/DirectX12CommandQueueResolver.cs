@@ -17,18 +17,18 @@ namespace PhantomRender.Core.Hooks.Graphics
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate int GetDeviceDelegate(IntPtr swapChain, ref Guid riid, out IntPtr ppDevice);
 
-        public static void CaptureCommandQueue(IntPtr commandQueue)
+        public static bool CaptureCommandQueue(IntPtr commandQueue)
         {
             if (commandQueue == IntPtr.Zero)
             {
-                return;
+                return false;
             }
 
             lock (SyncRoot)
             {
                 if (_capturedCommandQueue == commandQueue)
                 {
-                    return;
+                    return false;
                 }
 
                 Marshal.AddRef(commandQueue);
@@ -40,6 +40,8 @@ namespace PhantomRender.Core.Hooks.Graphics
                 {
                     Marshal.Release(previous);
                 }
+
+                return true;
             }
         }
 

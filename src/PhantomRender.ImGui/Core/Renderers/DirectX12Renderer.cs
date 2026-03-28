@@ -109,6 +109,28 @@ namespace PhantomRender.ImGui.Core.Renderers
             public int Bottom;
         }
 
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3D12CpuDescriptorHandle
+        {
+            public nuint Ptr;
+
+            public D3D12CpuDescriptorHandle(nuint ptr)
+            {
+                Ptr = ptr;
+            }
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct D3D12GpuDescriptorHandle
+        {
+            public ulong Ptr;
+
+            public D3D12GpuDescriptorHandle(ulong ptr)
+            {
+                Ptr = ptr;
+            }
+        }
+
         private struct FrameContext
         {
             public IntPtr CommandAllocator;
@@ -307,6 +329,19 @@ namespace PhantomRender.ImGui.Core.Renderers
         private bool _imguiBackendInitialized;
         private bool _loggedWaitingQueue;
         private bool _loggedSwapchainDesc;
+        private SwapChain3GetCurrentBackBufferIndexDelegate _getCurrentBackBufferIndex;
+        private CommandAllocatorResetDelegate _commandAllocatorReset;
+        private GraphicsCommandListCloseDelegate _graphicsCommandListClose;
+        private GraphicsCommandListResetDelegate _graphicsCommandListReset;
+        private GraphicsCommandListResourceBarrierDelegate _graphicsCommandListResourceBarrier;
+        private GraphicsCommandListSetDescriptorHeapsDelegate _graphicsCommandListSetDescriptorHeaps;
+        private GraphicsCommandListOMSetRenderTargetsDelegate _graphicsCommandListOMSetRenderTargets;
+        private CommandQueueExecuteCommandListsDelegate _commandQueueExecuteCommandLists;
+        private CommandQueueSignalDelegate _commandQueueSignal;
+        private FenceGetCompletedValueDelegate _fenceGetCompletedValue;
+        private FenceSetEventOnCompletionDelegate _fenceSetEventOnCompletion;
+        private RSSetViewportsDelegate _graphicsCommandListRSSetViewports;
+        private RSSetScissorRectsDelegate _graphicsCommandListRSSetScissorRects;
 
         public DirectX12Renderer()
             : base(GraphicsApi.DirectX12)
@@ -355,7 +390,6 @@ namespace PhantomRender.ImGui.Core.Renderers
             try
             {
                 BeginFrameCore(_backendNewFrameAction);
-
                 FrameStarted = true;
             }
             catch (Exception ex)
@@ -580,6 +614,19 @@ namespace PhantomRender.ImGui.Core.Renderers
             _imguiSrvCpu = default;
             _imguiSrvGpu = default;
             _loggedSwapchainDesc = false;
+            _getCurrentBackBufferIndex = null;
+            _commandAllocatorReset = null;
+            _graphicsCommandListClose = null;
+            _graphicsCommandListReset = null;
+            _graphicsCommandListResourceBarrier = null;
+            _graphicsCommandListSetDescriptorHeaps = null;
+            _graphicsCommandListOMSetRenderTargets = null;
+            _commandQueueExecuteCommandLists = null;
+            _commandQueueSignal = null;
+            _fenceGetCompletedValue = null;
+            _fenceSetEventOnCompletion = null;
+            _graphicsCommandListRSSetViewports = null;
+            _graphicsCommandListRSSetScissorRects = null;
 
             Volatile.Write(ref _srvAllocatorReady, 0);
             _srvAllocCpuStart = 0;
@@ -616,13 +663,13 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         private bool EnsureCommandQueue(IntPtr swapChain)
         {
+            if (_commandQueue != IntPtr.Zero)
+            {
+                return true;
+            }
+
             if (!DirectX12CommandQueueResolver.TryGetCommandQueueFromSwapChain(swapChain, out IntPtr newQueue) || newQueue == IntPtr.Zero)
             {
-                if (_commandQueue != IntPtr.Zero)
-                {
-                    return true;
-                }
-
                 if (!_loggedWaitingQueue)
                 {
                     Console.WriteLine("[PhantomRender] DX12 detected, waiting for command queue...");
@@ -639,16 +686,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                 return true;
             }
 
-            if (_commandQueue == newQueue)
-            {
-                ReleaseComObject(newQueue);
-                return true;
-            }
-
-            ShutdownBackend();
-            ReleaseComObject(_commandQueue);
-            _commandQueue = newQueue;
-            Console.WriteLine($"[PhantomRender] DX12: Command queue changed to 0x{_commandQueue.ToInt64():X}.");
+            ReleaseComObject(newQueue);
             return true;
         }
 
@@ -700,6 +738,11 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
 
             if (!CreateCommandObjects())
+            {
+                return false;
+            }
+
+            if (!CacheHotPathDelegates())
             {
                 return false;
             }
@@ -823,6 +866,37 @@ namespace PhantomRender.ImGui.Core.Renderers
             return _fenceEvent != IntPtr.Zero;
         }
 
+        private bool CacheHotPathDelegates()
+        {
+            _getCurrentBackBufferIndex = GetVTableDelegate<SwapChain3GetCurrentBackBufferIndexDelegate>(_swapChain3, 36);
+            _commandAllocatorReset = GetVTableDelegate<CommandAllocatorResetDelegate>(_frames[0].CommandAllocator, VTABLE_ID3D12CommandAllocator_Reset);
+            _graphicsCommandListClose = GetVTableDelegate<GraphicsCommandListCloseDelegate>(_commandList, VTABLE_ID3D12GraphicsCommandList_Close);
+            _graphicsCommandListReset = GetVTableDelegate<GraphicsCommandListResetDelegate>(_commandList, VTABLE_ID3D12GraphicsCommandList_Reset);
+            _graphicsCommandListResourceBarrier = GetVTableDelegate<GraphicsCommandListResourceBarrierDelegate>(_commandList, VTABLE_ID3D12GraphicsCommandList_ResourceBarrier);
+            _graphicsCommandListSetDescriptorHeaps = GetVTableDelegate<GraphicsCommandListSetDescriptorHeapsDelegate>(_commandList, VTABLE_ID3D12GraphicsCommandList_SetDescriptorHeaps);
+            _graphicsCommandListOMSetRenderTargets = GetVTableDelegate<GraphicsCommandListOMSetRenderTargetsDelegate>(_commandList, VTABLE_ID3D12GraphicsCommandList_OMSetRenderTargets);
+            _graphicsCommandListRSSetViewports = GetVTableDelegate<RSSetViewportsDelegate>(_commandList, 21);
+            _graphicsCommandListRSSetScissorRects = GetVTableDelegate<RSSetScissorRectsDelegate>(_commandList, 22);
+            _commandQueueExecuteCommandLists = GetVTableDelegate<CommandQueueExecuteCommandListsDelegate>(_commandQueue, VTABLE_ID3D12CommandQueue_ExecuteCommandLists);
+            _commandQueueSignal = GetVTableDelegate<CommandQueueSignalDelegate>(_commandQueue, VTABLE_ID3D12CommandQueue_Signal);
+            _fenceGetCompletedValue = GetVTableDelegate<FenceGetCompletedValueDelegate>(_fence, VTABLE_ID3D12Fence_GetCompletedValue);
+            _fenceSetEventOnCompletion = GetVTableDelegate<FenceSetEventOnCompletionDelegate>(_fence, VTABLE_ID3D12Fence_SetEventOnCompletion);
+
+            return _getCurrentBackBufferIndex != null &&
+                   _commandAllocatorReset != null &&
+                   _graphicsCommandListClose != null &&
+                   _graphicsCommandListReset != null &&
+                   _graphicsCommandListResourceBarrier != null &&
+                   _graphicsCommandListSetDescriptorHeaps != null &&
+                   _graphicsCommandListOMSetRenderTargets != null &&
+                   _graphicsCommandListRSSetViewports != null &&
+                   _graphicsCommandListRSSetScissorRects != null &&
+                   _commandQueueExecuteCommandLists != null &&
+                   _commandQueueSignal != null &&
+                   _fenceGetCompletedValue != null &&
+                   _fenceSetEventOnCompletion != null;
+        }
+
         private bool InitializeBackend()
         {
             try
@@ -865,7 +939,21 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         private void RenderDrawData(ImDrawDataPtr drawData)
         {
-            if (_frames == null || _commandQueue == IntPtr.Zero || _commandList == IntPtr.Zero || _swapChain3 == IntPtr.Zero)
+            if (_frames == null ||
+                _commandQueue == IntPtr.Zero ||
+                _commandList == IntPtr.Zero ||
+                _swapChain3 == IntPtr.Zero ||
+                _getCurrentBackBufferIndex == null ||
+                _commandAllocatorReset == null ||
+                _graphicsCommandListReset == null ||
+                _graphicsCommandListResourceBarrier == null ||
+                _graphicsCommandListOMSetRenderTargets == null ||
+                _graphicsCommandListSetDescriptorHeaps == null ||
+                _graphicsCommandListRSSetViewports == null ||
+                _graphicsCommandListRSSetScissorRects == null ||
+                _graphicsCommandListClose == null ||
+                _commandQueueExecuteCommandLists == null ||
+                _commandQueueSignal == null)
             {
                 return;
             }
@@ -874,7 +962,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             ImGuiImplWin32.SetCurrentContext(Context);
             ImGuiImplD3D12.SetCurrentContext(Context);
 
-            uint frameIndex = GetCurrentBackBufferIndex(_swapChain3);
+            uint frameIndex = _getCurrentBackBufferIndex(_swapChain3);
             if (frameIndex >= _frames.Length)
             {
                 return;
@@ -884,12 +972,12 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             WaitForFrame(ref frame);
 
-            if (CommandAllocatorReset(frame.CommandAllocator) < 0)
+            if (_commandAllocatorReset(frame.CommandAllocator) < 0)
             {
                 return;
             }
 
-            if (GraphicsCommandListReset(_commandList, frame.CommandAllocator, IntPtr.Zero) < 0)
+            if (_graphicsCommandListReset(_commandList, frame.CommandAllocator, IntPtr.Zero) < 0)
             {
                 return;
             }
@@ -910,13 +998,13 @@ namespace PhantomRender.ImGui.Core.Renderers
                 },
             };
 
-            GraphicsCommandListResourceBarrier(_commandList, 1, &barrier);
+            _graphicsCommandListResourceBarrier(_commandList, 1, &barrier);
 
             nuint rtvHandle = frame.RenderTargetView.Ptr;
-            GraphicsCommandListOMSetRenderTargets(_commandList, 1, &rtvHandle, 0, null);
+            _graphicsCommandListOMSetRenderTargets(_commandList, 1, &rtvHandle, 0, null);
 
             IntPtr srvHeap = _srvHeap;
-            GraphicsCommandListSetDescriptorHeaps(_commandList, 1, &srvHeap);
+            _graphicsCommandListSetDescriptorHeaps(_commandList, 1, &srvHeap);
 
             var viewport = new D3D12_VIEWPORT
             {
@@ -936,8 +1024,8 @@ namespace PhantomRender.ImGui.Core.Renderers
                 Bottom = _height,
             };
 
-            GraphicsCommandListRSSetViewports(_commandList, 1, &viewport);
-            GraphicsCommandListRSSetScissorRects(_commandList, 1, &rect);
+            _graphicsCommandListRSSetViewports(_commandList, 1, &viewport);
+            _graphicsCommandListRSSetScissorRects(_commandList, 1, &rect);
 
             if (drawData.Handle == null)
             {
@@ -948,18 +1036,18 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             barrier.Union.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
             barrier.Union.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
-            GraphicsCommandListResourceBarrier(_commandList, 1, &barrier);
+            _graphicsCommandListResourceBarrier(_commandList, 1, &barrier);
 
-            if (GraphicsCommandListClose(_commandList) < 0)
+            if (_graphicsCommandListClose(_commandList) < 0)
             {
                 return;
             }
 
             IntPtr commandList = _commandList;
-            CommandQueueExecuteCommandLists(_commandQueue, 1, &commandList);
+            _commandQueueExecuteCommandLists(_commandQueue, 1, &commandList);
 
             ulong nextFenceValue = ++_fenceValue;
-            CommandQueueSignal(_commandQueue, _fence, nextFenceValue);
+            _commandQueueSignal(_commandQueue, _fence, nextFenceValue);
             frame.FenceValue = nextFenceValue;
         }
 
@@ -975,32 +1063,48 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         private void WaitForGpuIdle()
         {
-            if (_commandQueue == IntPtr.Zero || _fence == IntPtr.Zero || _fenceEvent == IntPtr.Zero)
+            if (_commandQueue == IntPtr.Zero || _fence == IntPtr.Zero || _fenceEvent == IntPtr.Zero || _commandQueueSignal == null || _fenceSetEventOnCompletion == null)
             {
                 return;
             }
 
             ulong value = ++_fenceValue;
-            CommandQueueSignal(_commandQueue, _fence, value);
-            FenceSetEventOnCompletion(_fence, value, _fenceEvent);
+            _commandQueueSignal(_commandQueue, _fence, value);
+            _fenceSetEventOnCompletion(_fence, value, _fenceEvent);
             WaitForSingleObject(_fenceEvent, INFINITE);
         }
 
         private void WaitForFrame(ref FrameContext frame)
         {
-            if (frame.FenceValue == 0 || _fence == IntPtr.Zero)
+            if (frame.FenceValue == 0 || _fence == IntPtr.Zero || _fenceGetCompletedValue == null || _fenceSetEventOnCompletion == null)
             {
                 return;
             }
 
-            ulong completed = FenceGetCompletedValue(_fence);
+            ulong completed = _fenceGetCompletedValue(_fence);
             if (completed >= frame.FenceValue)
             {
                 return;
             }
 
-            FenceSetEventOnCompletion(_fence, frame.FenceValue, _fenceEvent);
+            _fenceSetEventOnCompletion(_fence, frame.FenceValue, _fenceEvent);
             WaitForSingleObject(_fenceEvent, INFINITE);
+        }
+
+        private static TDelegate GetVTableDelegate<TDelegate>(IntPtr instance, int functionIndex)
+            where TDelegate : class
+        {
+            IntPtr address = GetVTableFunctionAddress(instance, functionIndex);
+            if (address == IntPtr.Zero)
+            {
+                return null;
+            }
+
+#if NET5_0_OR_GREATER
+            return Marshal.GetDelegateForFunctionPointer<TDelegate>(address);
+#else
+            return Marshal.GetDelegateForFunctionPointer(address, typeof(TDelegate)) as TDelegate;
+#endif
         }
 
         private static bool TryGetSwapChainDesc(IntPtr swapChain, out DXGI.DXGI_SWAP_CHAIN_DESC desc)

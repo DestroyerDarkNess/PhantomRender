@@ -1,5 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using MinHook;
 using PhantomRender.Core.Memory;
 using PhantomRender.Core.Native;
@@ -60,6 +61,8 @@ namespace PhantomRender.Core.Hooks.Graphics
         private readonly PresentDelegate _originalPresent;
         private readonly ResizeBuffersDelegate _originalResizeBuffers;
         private readonly ExecuteCommandListsDelegate _originalExecuteCommandLists;
+        private int _executeCommandListsDisablePending;
+        private int _executeCommandListsDisabled;
 
         public DirectX12Hook(IntPtr swapChainAddress)
         {
@@ -117,6 +120,8 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private int PresentHook(IntPtr swapChain, uint syncInterval, uint flags)
         {
+            DisableExecuteCommandListsHookIfNeeded();
+
             try
             {
                 OnPresent?.Invoke(swapChain, syncInterval, flags);
@@ -147,7 +152,10 @@ namespace PhantomRender.Core.Hooks.Graphics
         {
             try
             {
-                DirectX12CommandQueueResolver.CaptureCommandQueue(commandQueue);
+                if (DirectX12CommandQueueResolver.CaptureCommandQueue(commandQueue))
+                {
+                    Interlocked.CompareExchange(ref _executeCommandListsDisablePending, 1, 0);
+                }
             }
             catch (Exception ex)
             {
@@ -155,6 +163,27 @@ namespace PhantomRender.Core.Hooks.Graphics
             }
 
             _originalExecuteCommandLists?.Invoke(commandQueue, numCommandLists, commandLists);
+        }
+
+        private void DisableExecuteCommandListsHookIfNeeded()
+        {
+            if (_originalExecuteCommandLists == null ||
+                Volatile.Read(ref _executeCommandListsDisablePending) == 0 ||
+                Volatile.Read(ref _executeCommandListsDisabled) != 0)
+            {
+                return;
+            }
+
+            try
+            {
+                _hookEngine.DisableHook(_originalExecuteCommandLists);
+                Volatile.Write(ref _executeCommandListsDisabled, 1);
+                Console.WriteLine("[PhantomRender] DX12 ExecuteCommandLists hook disabled after queue capture.");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX12 ExecuteCommandLists hook disable failed: {ex.Message}");
+            }
         }
 
         public void Dispose()
