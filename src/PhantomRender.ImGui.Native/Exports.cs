@@ -15,12 +15,10 @@ namespace PhantomRender.ImGui.Native
     {
         private const uint DLL_PROCESS_DETACH = 0;
         private const uint DLL_PROCESS_ATTACH = 1;
-        private const string EnableNoGcRegionEnvironmentVariable = "PHANTOMRENDER_ENABLE_NOGC_REGION";
 
         private static readonly object SyncRoot = new object();
         private static IntPtr _hModule;
         private static int _shutdownRequested;
-        private static int _noGcRegionActive;
         private static InternalOverlay _overlay;
         private static UI _ui;
         private static TextWriter _logWriter;
@@ -47,7 +45,6 @@ namespace PhantomRender.ImGui.Native
                 case DLL_PROCESS_DETACH:
                     RequestShutdown();
                     ShutdownInternal();
-                    EndNoGcRegion();
                     CloseLogging();
                     break;
             }
@@ -75,7 +72,6 @@ namespace PhantomRender.ImGui.Native
                     return;
                 }
 
-                TryStartNoGcRegion();
                 Log("Overlay initialized. Entering wait loop.");
 
                 while (!IsShutdownRequested())
@@ -90,7 +86,6 @@ namespace PhantomRender.ImGui.Native
             finally
             {
                 Log("Shutting down native bootstrap.");
-                EndNoGcRegion();
                 ShutdownInternal();
                 CloseLogging();
             }
@@ -325,66 +320,6 @@ namespace PhantomRender.ImGui.Native
             _logWriter = null;
             _originalOut = null;
             _originalError = null;
-        }
-
-        private static void TryStartNoGcRegion()
-        {
-            if (!ShouldUseNoGcRegion())
-            {
-                Log($"NoGCRegion disabled by default. Set {EnableNoGcRegionEnvironmentVariable}=1 to re-enable it for diagnostics.");
-                return;
-            }
-
-            try
-            {
-                if (GC.TryStartNoGCRegion(32 * 1024 * 1024))
-                {
-                    _noGcRegionActive = 1;
-                    Log("NoGCRegion started with budget=33554432 bytes.");
-                }
-            }
-            catch (Exception ex)
-            {
-                Log($"NoGCRegion start failed: {ex.Message}");
-            }
-        }
-
-        private static bool ShouldUseNoGcRegion()
-        {
-            try
-            {
-                string value = Environment.GetEnvironmentVariable(EnableNoGcRegionEnvironmentVariable);
-                if (string.IsNullOrWhiteSpace(value))
-                {
-                    return false;
-                }
-
-                return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
-                       string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
-            }
-            catch
-            {
-                return false;
-            }
-        }
-
-        private static void EndNoGcRegion()
-        {
-            if (Interlocked.Exchange(ref _noGcRegionActive, 0) == 0)
-            {
-                return;
-            }
-
-            try
-            {
-                GC.EndNoGCRegion();
-                Log("NoGCRegion ended.");
-            }
-            catch (Exception ex)
-            {
-                Log($"NoGCRegion end failed: {ex.Message}");
-            }
         }
 
         private static void Log(string message)
