@@ -15,6 +15,7 @@ namespace PhantomRender.ImGui.Native
     {
         private const uint DLL_PROCESS_DETACH = 0;
         private const uint DLL_PROCESS_ATTACH = 1;
+        private const string EnableNoGcRegionEnvironmentVariable = "PHANTOMRENDER_ENABLE_NOGC_REGION";
 
         private static readonly object SyncRoot = new object();
         private static IntPtr _hModule;
@@ -328,6 +329,12 @@ namespace PhantomRender.ImGui.Native
 
         private static void TryStartNoGcRegion()
         {
+            if (!ShouldUseNoGcRegion())
+            {
+                Log($"NoGCRegion disabled by default. Set {EnableNoGcRegionEnvironmentVariable}=1 to re-enable it for diagnostics.");
+                return;
+            }
+
             try
             {
                 if (GC.TryStartNoGCRegion(32 * 1024 * 1024))
@@ -339,6 +346,26 @@ namespace PhantomRender.ImGui.Native
             catch (Exception ex)
             {
                 Log($"NoGCRegion start failed: {ex.Message}");
+            }
+        }
+
+        private static bool ShouldUseNoGcRegion()
+        {
+            try
+            {
+                string value = Environment.GetEnvironmentVariable(EnableNoGcRegionEnvironmentVariable);
+                if (string.IsNullOrWhiteSpace(value))
+                {
+                    return false;
+                }
+
+                return string.Equals(value, "1", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(value, "true", StringComparison.OrdinalIgnoreCase) ||
+                       string.Equals(value, "yes", StringComparison.OrdinalIgnoreCase);
+            }
+            catch
+            {
+                return false;
             }
         }
 
