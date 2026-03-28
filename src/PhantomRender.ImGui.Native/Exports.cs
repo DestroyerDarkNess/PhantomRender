@@ -1,7 +1,9 @@
 using System;
 using System.Diagnostics;
+using System.IO;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Threading;
 using PhantomRender.Core;
 using PhantomRender.ImGui;
@@ -17,8 +19,13 @@ namespace PhantomRender.ImGui.Native
         private static readonly object SyncRoot = new object();
         private static IntPtr _hModule;
         private static int _shutdownRequested;
+        private static int _noGcRegionActive;
         private static InternalOverlay _overlay;
         private static UI _ui;
+        private static TextWriter _logWriter;
+        private static TextWriter _originalOut;
+        private static TextWriter _originalError;
+        private static string _logPath;
 
         [UnmanagedCallersOnly(EntryPoint = "DllMain", CallConvs = new[] { typeof(CallConvStdcall) })]
         public static unsafe bool DllMain(IntPtr hModule, uint ul_reason_for_call, IntPtr lpReserved)
@@ -39,6 +46,8 @@ namespace PhantomRender.ImGui.Native
                 case DLL_PROCESS_DETACH:
                     RequestShutdown();
                     ShutdownInternal();
+                    EndNoGcRegion();
+                    CloseLogging();
                     break;
             }
 
@@ -54,12 +63,19 @@ namespace PhantomRender.ImGui.Native
 
         private static void RunInternal()
         {
+            InitializeLogging();
+            Log("Native bootstrap thread started.");
+
             try
             {
                 if (!InitializeInternal())
                 {
+                    Log("InitializeInternal returned false.");
                     return;
                 }
+
+                TryStartNoGcRegion();
+                Log("Overlay initialized. Entering wait loop.");
 
                 while (!IsShutdownRequested())
                 {
@@ -68,21 +84,29 @@ namespace PhantomRender.ImGui.Native
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"[PhantomRender] Internal bootstrap failed: {ex}");
+                Log($"Internal bootstrap failed: {ex}");
             }
             finally
             {
+                Log("Shutting down native bootstrap.");
+                EndNoGcRegion();
                 ShutdownInternal();
+                CloseLogging();
             }
         }
 
         private static bool InitializeInternal()
         {
+            Log("Waiting for supported graphics API...");
+
             GraphicsApi graphicsApi = WaitForSupportedGraphicsApi(TimeSpan.FromSeconds(15));
             if (graphicsApi == GraphicsApi.Unknown)
             {
+                Log("No supported graphics API was detected within the timeout.");
                 return false;
             }
+
+            Log($"Detected graphics API: {graphicsApi.ToDisplayName()}.");
 
             RendererBase renderer = CreateInternalRenderer(graphicsApi);
             var overlay = new InternalOverlay(renderer)
@@ -93,6 +117,7 @@ namespace PhantomRender.ImGui.Native
             var ui = new UI(overlay);
             if (!overlay.Start())
             {
+                Log($"Overlay start failed for {graphicsApi.ToDisplayName()}.");
                 ui.Dispose();
                 overlay.Dispose();
                 return false;
@@ -104,6 +129,7 @@ namespace PhantomRender.ImGui.Native
                 _ui = ui;
             }
 
+            Log($"Overlay start succeeded for {graphicsApi.ToDisplayName()}.");
             return true;
         }
 
@@ -112,29 +138,34 @@ namespace PhantomRender.ImGui.Native
             Stopwatch stopwatch = Stopwatch.StartNew();
             while (stopwatch.Elapsed < timeout && !IsShutdownRequested())
             {
-                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
-                {
-                    return GraphicsApi.OpenGL;
-                }
-
-                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
-                {
-                    return GraphicsApi.DirectX9;
-                }
-
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX12))
                 {
+                    Log($"Graphics API detection hit DX12 after {stopwatch.ElapsedMilliseconds}ms.");
                     return GraphicsApi.DirectX12;
                 }
 
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX11))
                 {
+                    Log($"Graphics API detection hit DX11 after {stopwatch.ElapsedMilliseconds}ms.");
                     return GraphicsApi.DirectX11;
                 }
 
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX10))
                 {
+                    Log($"Graphics API detection hit DX10 after {stopwatch.ElapsedMilliseconds}ms.");
                     return GraphicsApi.DirectX10;
+                }
+
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
+                {
+                    Log($"Graphics API detection hit DX9 after {stopwatch.ElapsedMilliseconds}ms.");
+                    return GraphicsApi.DirectX9;
+                }
+
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
+                {
+                    Log($"Graphics API detection hit OpenGL after {stopwatch.ElapsedMilliseconds}ms.");
+                    return GraphicsApi.OpenGL;
                 }
 
                 Thread.Sleep(100);
@@ -222,6 +253,151 @@ namespace PhantomRender.ImGui.Native
             }
         }
 
+        private static void InitializeLogging()
+        {
+            try
+            {
+                if (_logWriter != null)
+                {
+                    return;
+                }
+
+                _logPath = ResolveLogPath();
+                string directory = Path.GetDirectoryName(_logPath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    Directory.CreateDirectory(directory);
+                }
+
+                _originalOut = Console.Out;
+                _originalError = Console.Error;
+
+                var stream = new FileStream(_logPath, FileMode.Create, FileAccess.Write, FileShare.ReadWrite);
+                _logWriter = TextWriter.Synchronized(new StreamWriter(stream, new UTF8Encoding(false))
+                {
+                    AutoFlush = true,
+                });
+
+                Console.SetOut(_logWriter);
+                Console.SetError(_logWriter);
+                Log($"File logging initialized at '{_logPath}'.");
+            }
+            catch
+            {
+            }
+        }
+
+        private static void CloseLogging()
+        {
+            try
+            {
+                _logWriter?.Flush();
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                if (_originalOut != null)
+                {
+                    Console.SetOut(_originalOut);
+                }
+
+                if (_originalError != null)
+                {
+                    Console.SetError(_originalError);
+                }
+            }
+            catch
+            {
+            }
+
+            try
+            {
+                _logWriter?.Dispose();
+            }
+            catch
+            {
+            }
+
+            _logWriter = null;
+            _originalOut = null;
+            _originalError = null;
+        }
+
+        private static void TryStartNoGcRegion()
+        {
+            try
+            {
+                if (GC.TryStartNoGCRegion(32 * 1024 * 1024))
+                {
+                    _noGcRegionActive = 1;
+                    Log("NoGCRegion started with budget=33554432 bytes.");
+                }
+            }
+            catch (Exception ex)
+            {
+                Log($"NoGCRegion start failed: {ex.Message}");
+            }
+        }
+
+        private static void EndNoGcRegion()
+        {
+            if (Interlocked.Exchange(ref _noGcRegionActive, 0) == 0)
+            {
+                return;
+            }
+
+            try
+            {
+                GC.EndNoGCRegion();
+                Log("NoGCRegion ended.");
+            }
+            catch (Exception ex)
+            {
+                Log($"NoGCRegion end failed: {ex.Message}");
+            }
+        }
+
+        private static void Log(string message)
+        {
+            try
+            {
+                Console.WriteLine($"[PhantomRender][{DateTime.Now:HH:mm:ss.fff}] {message}");
+            }
+            catch
+            {
+            }
+        }
+
+        private static string ResolveLogPath()
+        {
+            string modulePath = GetModulePath(_hModule);
+            if (!string.IsNullOrWhiteSpace(modulePath))
+            {
+                string directory = Path.GetDirectoryName(modulePath);
+                if (!string.IsNullOrWhiteSpace(directory))
+                {
+                    return Path.Combine(directory, "PhantomRender.Native.log");
+                }
+            }
+
+            return Path.Combine(Path.GetTempPath(), "PhantomRender", "PhantomRender.Native.log");
+        }
+
+        private static string GetModulePath(IntPtr moduleHandle)
+        {
+            if (moduleHandle == IntPtr.Zero)
+            {
+                return null;
+            }
+
+            var builder = new StringBuilder(1024);
+            int length = GetModuleFileNameW(moduleHandle, builder, builder.Capacity);
+            return length > 0 ? builder.ToString(0, length) : null;
+        }
+
         [DllImport("kernel32.dll")]
         private static extern unsafe IntPtr CreateThread(IntPtr lpThreadAttributes, IntPtr dwStackSize, delegate* unmanaged[Stdcall]<IntPtr, uint> lpStartAddress, IntPtr lpParameter, uint dwCreationFlags, IntPtr lpThreadId);
 
@@ -232,5 +408,8 @@ namespace PhantomRender.ImGui.Native
         [DllImport("kernel32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
         private static extern bool CloseHandle(IntPtr hObject);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern int GetModuleFileNameW(IntPtr hModule, StringBuilder lpFilename, int nSize);
     }
 }

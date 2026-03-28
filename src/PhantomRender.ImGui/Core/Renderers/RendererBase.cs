@@ -10,7 +10,10 @@ namespace PhantomRender.ImGui.Core.Renderers
 {
     public abstract class RendererBase : IOverlayRenderer
     {
+        private readonly object _callbackSync = new object();
         private Overlay _overlay;
+        private Action[] _overlayNewFrameHandlers = Array.Empty<Action>();
+        private Action[] _overlayRenderHandlers = Array.Empty<Action>();
 
         protected RendererBase(GraphicsApi graphicsApi)
         {
@@ -27,7 +30,17 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         public ImGuiIOPtr IO { get; protected set; }
 
-        public event Action OnOverlayRender;
+        public event Action OnOverlayNewFrame
+        {
+            add => AddHandler(ref _overlayNewFrameHandlers, value);
+            remove => RemoveHandler(ref _overlayNewFrameHandlers, value);
+        }
+
+        public event Action OnOverlayRender
+        {
+            add => AddHandler(ref _overlayRenderHandlers, value);
+            remove => RemoveHandler(ref _overlayRenderHandlers, value);
+        }
 
         public abstract bool Initialize(nint device, nint windowHandle);
 
@@ -108,25 +121,14 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
         }
 
+        protected void RaiseOverlayNewFrame()
+        {
+            RaiseHandlers(_overlayNewFrameHandlers, "OnOverlayNewFrame");
+        }
+
         protected void RaiseOverlayRender()
         {
-            Action handlers = OnOverlayRender;
-            if (handlers == null)
-            {
-                return;
-            }
-
-            foreach (Delegate handler in handlers.GetInvocationList())
-            {
-                try
-                {
-                    ((Action)handler)();
-                }
-                catch (Exception ex)
-                {
-                    HandleOverlayCallbackException("OnOverlayRender", ex);
-                }
-            }
+            RaiseHandlers(_overlayRenderHandlers, "OnOverlayRender");
         }
 
         protected unsafe void InitializeImGui(nint windowHandle)
@@ -154,6 +156,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             SetSharedContextsCurrent();
             backendNewFrame();
             RaiseNewFrame();
+            RaiseOverlayNewFrame();
             HexaImGui.NewFrame();
         }
 
@@ -244,6 +247,79 @@ namespace PhantomRender.ImGui.Core.Renderers
         private Overlay RequireOverlay()
         {
             return _overlay ?? throw new InvalidOperationException("Renderer is not attached to an overlay.");
+        }
+
+        private void RaiseHandlers(Action[] handlers, string stage)
+        {
+            if (handlers == null || handlers.Length == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < handlers.Length; i++)
+            {
+                try
+                {
+                    handlers[i]();
+                }
+                catch (Exception ex)
+                {
+                    HandleOverlayCallbackException(stage, ex);
+                }
+            }
+        }
+
+        private void AddHandler(ref Action[] handlers, Action handler)
+        {
+            if (handler == null)
+            {
+                return;
+            }
+
+            lock (_callbackSync)
+            {
+                int length = handlers.Length;
+                Action[] updated = new Action[length + 1];
+                Array.Copy(handlers, updated, length);
+                updated[length] = handler;
+                handlers = updated;
+            }
+        }
+
+        private void RemoveHandler(ref Action[] handlers, Action handler)
+        {
+            if (handler == null)
+            {
+                return;
+            }
+
+            lock (_callbackSync)
+            {
+                int index = Array.IndexOf(handlers, handler);
+                if (index < 0)
+                {
+                    return;
+                }
+
+                if (handlers.Length == 1)
+                {
+                    handlers = Array.Empty<Action>();
+                    return;
+                }
+
+                Action[] updated = new Action[handlers.Length - 1];
+                if (index > 0)
+                {
+                    Array.Copy(handlers, 0, updated, 0, index);
+                }
+
+                if (index < handlers.Length - 1)
+                {
+                    Array.Copy(handlers, index + 1, updated, index, handlers.Length - index - 1);
+                }
+
+                handlers = updated;
+            }
         }
     }
 }

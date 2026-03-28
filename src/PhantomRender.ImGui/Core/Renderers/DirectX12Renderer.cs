@@ -1,5 +1,7 @@
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Threading;
 using Hexa.NET.ImGui;
 using Hexa.NET.ImGui.Backends.D3D12;
 using Hexa.NET.ImGui.Backends.Win32;
@@ -12,6 +14,7 @@ namespace PhantomRender.ImGui.Core.Renderers
 {
     public sealed unsafe class DirectX12Renderer : DxgiRendererBase
     {
+        private const int SRV_HEAP_CAPACITY = 2048;
         private const int VTABLE_IUnknown_QueryInterface = 0;
         private const int VTABLE_IDXGISwapChain_GetBuffer = 9;
         private const int VTABLE_IDXGISwapChain_GetDesc = 12;
@@ -42,6 +45,7 @@ namespace PhantomRender.ImGui.Core.Renderers
         private const int D3D12_RESOURCE_BARRIER_TYPE_TRANSITION = 0;
         private const int D3D12_RESOURCE_BARRIER_FLAG_NONE = 0;
         private const uint D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES = 0xffffffff;
+        private const int D3D12_RESOURCE_STATE_COMMON = 0;
         private const int D3D12_RESOURCE_STATE_PRESENT = 0;
         private const int D3D12_RESOURCE_STATE_RENDER_TARGET = 0x4;
         private const uint INFINITE = 0xffffffff;
@@ -185,6 +189,86 @@ namespace PhantomRender.ImGui.Core.Renderers
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         private delegate void RSSetScissorRectsDelegate(IntPtr commandList, uint numRects, D3D12_RECT* rects);
 
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void SrvDescriptorAllocDelegate(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle* outCpuDesc, D3D12GpuDescriptorHandle* outGpuDesc);
+
+        [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+        private delegate void SrvDescriptorFreeDelegate(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle cpuDesc, D3D12GpuDescriptorHandle gpuDesc);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct ImGui_ImplDX12_InitInfo_Fixed
+        {
+            public IntPtr Device;
+            public IntPtr CommandQueue;
+            public int NumFramesInFlight;
+            public int RTVFormat;
+            public int DSVFormat;
+            public IntPtr UserData;
+            public IntPtr SrvDescriptorHeap;
+            public IntPtr SrvDescriptorAllocFn;
+            public IntPtr SrvDescriptorFreeFn;
+            public nuint LegacySingleSrvCpuDescriptor;
+            public ulong LegacySingleSrvGpuDescriptor;
+        }
+
+        private static int _srvAllocatorReady;
+        private static nuint _srvAllocCpuStart;
+        private static ulong _srvAllocGpuStart;
+        private static uint _srvAllocDescriptorSize;
+        private static int _srvAllocNextIndex;
+        private static int _srvAllocLoggedOutOfSpace;
+
+#if !NET5_0_OR_GREATER
+        private static readonly SrvDescriptorAllocDelegate SrvDescriptorAllocCallback = SrvDescriptorAlloc;
+        private static readonly SrvDescriptorFreeDelegate SrvDescriptorFreeCallback = SrvDescriptorFree;
+#endif
+
+#if NET5_0_OR_GREATER
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+#endif
+        private static void SrvDescriptorAlloc(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle* outCpuDesc, D3D12GpuDescriptorHandle* outGpuDesc)
+        {
+            if (outCpuDesc == null || outGpuDesc == null)
+            {
+                return;
+            }
+
+            if (Volatile.Read(ref _srvAllocatorReady) == 0 || _srvAllocDescriptorSize == 0)
+            {
+                outCpuDesc->Ptr = 0;
+                outGpuDesc->Ptr = 0;
+                return;
+            }
+
+            int idx = Interlocked.Increment(ref _srvAllocNextIndex) - 1;
+            if ((uint)idx >= SRV_HEAP_CAPACITY)
+            {
+                if (Interlocked.CompareExchange(ref _srvAllocLoggedOutOfSpace, 1, 0) == 0)
+                {
+                    Console.WriteLine("[PhantomRender] DX12: SRV descriptor heap is exhausted; reusing descriptor 0.");
+                }
+
+                idx = 0;
+            }
+
+            ulong offset = (ulong)idx * _srvAllocDescriptorSize;
+            outCpuDesc->Ptr = _srvAllocCpuStart + (nuint)offset;
+            outGpuDesc->Ptr = _srvAllocGpuStart + offset;
+        }
+
+#if NET5_0_OR_GREATER
+        [UnmanagedCallersOnly(CallConvs = new[] { typeof(CallConvCdecl) })]
+#endif
+        private static void SrvDescriptorFree(ImGui_ImplDX12_InitInfo_Fixed* info, D3D12CpuDescriptorHandle cpuDesc, D3D12GpuDescriptorHandle gpuDesc)
+        {
+        }
+
+        [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_Init")]
+        private static extern bool CImGui_ImplDX12_Init_Manual(ImGui_ImplDX12_InitInfo_Fixed* info);
+
+        [DllImport("ImGuiImpl.dll", CallingConvention = CallingConvention.Cdecl, EntryPoint = "CImGui_ImplDX12_RenderDrawData")]
+        private static extern void CImGui_ImplDX12_RenderDrawData_Manual(ImDrawData* drawData, IntPtr graphicsCommandList);
+
         [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
         private static extern IntPtr CreateEventW(IntPtr eventAttributes, int manualReset, int initialState, string name);
 
@@ -195,6 +279,8 @@ namespace PhantomRender.ImGui.Core.Renderers
         private static extern bool CloseHandle(IntPtr handle);
 
         private readonly object _sync = new object();
+        private readonly Action _backendNewFrameAction;
+        private readonly Action _backendRenderAction;
 
         private IntPtr _device;
         private IntPtr _commandQueue;
@@ -219,10 +305,14 @@ namespace PhantomRender.ImGui.Core.Renderers
         private uint _srvDescriptorSize;
         private ulong _fenceValue;
         private bool _imguiBackendInitialized;
+        private bool _loggedWaitingQueue;
+        private bool _loggedSwapchainDesc;
 
         public DirectX12Renderer()
             : base(GraphicsApi.DirectX12)
         {
+            _backendNewFrameAction = BackendNewFrame;
+            _backendRenderAction = BackendRender;
         }
 
         public override bool Initialize(nint device, nint windowHandle)
@@ -264,13 +354,7 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             try
             {
-                BeginFrameCore(() =>
-                {
-                    ImGuiImplD3D12.SetCurrentContext(Context);
-                    ImGuiImplD3D12.NewFrame();
-                    ImGuiImplWin32.SetCurrentContext(Context);
-                    ImGuiImplWin32.NewFrame();
-                });
+                BeginFrameCore(_backendNewFrameAction);
 
                 FrameStarted = true;
             }
@@ -315,15 +399,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                         }
                     }
 
-                    RenderFrameCore(() =>
-                    {
-                        ImGuiImplD3D12.SetCurrentContext(Context);
-                        ImDrawDataPtr drawData = HexaImGui.GetDrawData();
-                        if (drawData.CmdListsCount > 0 && drawData.TotalVtxCount > 0)
-                        {
-                            RenderDrawData(drawData);
-                        }
-                    });
+                    RenderFrameCore(_backendRenderAction);
                 }
                 catch (Exception ex)
                 {
@@ -398,6 +474,24 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             FrameStarted = false;
             SwapChainHandle = IntPtr.Zero;
+        }
+
+        private void BackendNewFrame()
+        {
+            ImGuiImplD3D12.SetCurrentContext(Context);
+            ImGuiImplD3D12.NewFrame();
+            ImGuiImplWin32.SetCurrentContext(Context);
+            ImGuiImplWin32.NewFrame();
+        }
+
+        private void BackendRender()
+        {
+            ImGuiImplD3D12.SetCurrentContext(Context);
+            ImDrawDataPtr drawData = HexaImGui.GetDrawData();
+            if (drawData.CmdListsCount > 0 && drawData.TotalVtxCount > 0)
+            {
+                RenderDrawData(drawData);
+            }
         }
 
         private void ShutdownBackend()
@@ -485,6 +579,14 @@ namespace PhantomRender.ImGui.Core.Renderers
             _srvGpuStart = default;
             _imguiSrvCpu = default;
             _imguiSrvGpu = default;
+            _loggedSwapchainDesc = false;
+
+            Volatile.Write(ref _srvAllocatorReady, 0);
+            _srvAllocCpuStart = 0;
+            _srvAllocGpuStart = 0;
+            _srvAllocDescriptorSize = 0;
+            _srvAllocNextIndex = 0;
+            _srvAllocLoggedOutOfSpace = 0;
         }
 
         private bool EnsureDx12Ready(IntPtr swapChain)
@@ -516,12 +618,24 @@ namespace PhantomRender.ImGui.Core.Renderers
         {
             if (!DirectX12CommandQueueResolver.TryGetCommandQueueFromSwapChain(swapChain, out IntPtr newQueue) || newQueue == IntPtr.Zero)
             {
-                return _commandQueue != IntPtr.Zero;
+                if (_commandQueue != IntPtr.Zero)
+                {
+                    return true;
+                }
+
+                if (!_loggedWaitingQueue)
+                {
+                    Console.WriteLine("[PhantomRender] DX12 detected, waiting for command queue...");
+                    _loggedWaitingQueue = true;
+                }
+
+                return false;
             }
 
             if (_commandQueue == IntPtr.Zero)
             {
                 _commandQueue = newQueue;
+                Console.WriteLine($"[PhantomRender] DX12: Command queue resolved: 0x{_commandQueue.ToInt64():X}.");
                 return true;
             }
 
@@ -534,6 +648,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             ShutdownBackend();
             ReleaseComObject(_commandQueue);
             _commandQueue = newQueue;
+            Console.WriteLine($"[PhantomRender] DX12: Command queue changed to 0x{_commandQueue.ToInt64():X}.");
             return true;
         }
 
@@ -590,6 +705,13 @@ namespace PhantomRender.ImGui.Core.Renderers
             }
 
             _swapChainForResources = swapChain;
+
+            if (!_loggedSwapchainDesc)
+            {
+                Console.WriteLine($"[PhantomRender] DX12 Init: SwapChainDesc Buffers={_bufferCount}, Format={_rtvFormat}, Windowed={desc.Windowed}");
+                _loggedSwapchainDesc = true;
+            }
+
             return true;
         }
 
@@ -619,7 +741,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             var srvHeapDesc = new D3D12_DESCRIPTOR_HEAP_DESC
             {
                 Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV,
-                NumDescriptors = 1,
+                NumDescriptors = SRV_HEAP_CAPACITY,
                 Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE,
                 NodeMask = 0,
             };
@@ -633,13 +755,15 @@ namespace PhantomRender.ImGui.Core.Renderers
             _srvCpuStart = GetCPUDescriptorHandleForHeapStart(_srvHeap);
             _srvGpuStart = GetGPUDescriptorHandleForHeapStart(_srvHeap);
 
-            if (_srvDescriptorSize == 0 || _srvCpuStart.Ptr == 0 || _srvGpuStart.Ptr == 0)
+            if (_srvDescriptorSize == 0 || _srvCpuStart.Ptr == 0)
             {
                 return false;
             }
 
-            _imguiSrvCpu = _srvCpuStart;
-            _imguiSrvGpu = _srvGpuStart;
+            uint legacySrvIndex = _srvGpuStart.Ptr == 0 ? 1u : 0u;
+            _imguiSrvCpu = new D3D12CpuDescriptorHandle(_srvCpuStart.Ptr + (nuint)(legacySrvIndex * _srvDescriptorSize));
+            _imguiSrvGpu = new D3D12GpuDescriptorHandle(_srvGpuStart.Ptr + (ulong)(legacySrvIndex * _srvDescriptorSize));
+            ConfigureSrvAllocator(_srvCpuStart, _srvGpuStart, _srvDescriptorSize, legacySrvIndex);
             _frames = new FrameContext[_bufferCount];
 
             for (uint i = 0; i < _bufferCount; i++)
@@ -705,26 +829,32 @@ namespace PhantomRender.ImGui.Core.Renderers
             {
                 ImGuiImplD3D12.SetCurrentContext(Context);
 
-                var initInfo = default(ImGuiImplDX12InitInfo);
-                initInfo.Device = (ID3D12Device*)_device;
-                initInfo.CommandQueue = (ID3D12CommandQueue*)_commandQueue;
-                initInfo.NumFramesInFlight = (int)_bufferCount;
-                initInfo.RTVFormat = _rtvFormat;
-                initInfo.DSVFormat = 0;
-                initInfo.UserData = null;
-                initInfo.SrvDescriptorHeap = (ID3D12DescriptorHeap*)_srvHeap;
-                initInfo.SrvDescriptorAllocFn = null;
-                initInfo.SrvDescriptorFreeFn = null;
-                initInfo.LegacySingleSrvCpuDescriptor = _imguiSrvCpu;
-                initInfo.LegacySingleSrvGpuDescriptor = _imguiSrvGpu;
+                ImGui_ImplDX12_InitInfo_Fixed info = default;
+                info.Device = _device;
+                info.CommandQueue = _commandQueue;
+                info.NumFramesInFlight = (int)_bufferCount;
+                info.RTVFormat = _rtvFormat;
+                info.DSVFormat = 0;
+                info.UserData = IntPtr.Zero;
+                info.SrvDescriptorHeap = _srvHeap;
+#if NET5_0_OR_GREATER
+                info.SrvDescriptorAllocFn = (IntPtr)(delegate* unmanaged[Cdecl]<ImGui_ImplDX12_InitInfo_Fixed*, D3D12CpuDescriptorHandle*, D3D12GpuDescriptorHandle*, void>)&SrvDescriptorAlloc;
+                info.SrvDescriptorFreeFn = (IntPtr)(delegate* unmanaged[Cdecl]<ImGui_ImplDX12_InitInfo_Fixed*, D3D12CpuDescriptorHandle, D3D12GpuDescriptorHandle, void>)&SrvDescriptorFree;
+#else
+                info.SrvDescriptorAllocFn = Marshal.GetFunctionPointerForDelegate(SrvDescriptorAllocCallback);
+                info.SrvDescriptorFreeFn = Marshal.GetFunctionPointerForDelegate(SrvDescriptorFreeCallback);
+#endif
+                info.LegacySingleSrvCpuDescriptor = _imguiSrvCpu.Ptr;
+                info.LegacySingleSrvGpuDescriptor = _imguiSrvGpu.Ptr;
 
-                if (!ImGuiImplD3D12.Init(new ImGuiImplDX12InitInfoPtr(&initInfo)))
+                if (!CImGui_ImplDX12_Init_Manual(&info))
                 {
                     return false;
                 }
 
-                _imguiBackendInitialized = true;
-                return ImGuiImplD3D12.CreateDeviceObjects();
+                bool created = ImGuiImplD3D12.CreateDeviceObjects();
+                _imguiBackendInitialized = created;
+                return created;
             }
             catch (Exception ex)
             {
@@ -739,6 +869,10 @@ namespace PhantomRender.ImGui.Core.Renderers
             {
                 return;
             }
+
+            HexaImGui.SetCurrentContext(Context);
+            ImGuiImplWin32.SetCurrentContext(Context);
+            ImGuiImplD3D12.SetCurrentContext(Context);
 
             uint frameIndex = GetCurrentBackBufferIndex(_swapChain3);
             if (frameIndex >= _frames.Length)
@@ -770,7 +904,7 @@ namespace PhantomRender.ImGui.Core.Renderers
                     {
                         Resource = frame.RenderTarget,
                         Subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-                        StateBefore = D3D12_RESOURCE_STATE_PRESENT,
+                        StateBefore = D3D12_RESOURCE_STATE_COMMON,
                         StateAfter = D3D12_RESOURCE_STATE_RENDER_TARGET,
                     },
                 },
@@ -805,11 +939,15 @@ namespace PhantomRender.ImGui.Core.Renderers
             GraphicsCommandListRSSetViewports(_commandList, 1, &viewport);
             GraphicsCommandListRSSetScissorRects(_commandList, 1, &rect);
 
-            ImGuiImplD3D12.SetCurrentContext(Context);
-            ImGuiImplD3D12.RenderDrawData(drawData, new ID3D12GraphicsCommandListPtr((ID3D12GraphicsCommandList*)_commandList));
+            if (drawData.Handle == null)
+            {
+                return;
+            }
+
+            CImGui_ImplDX12_RenderDrawData_Manual(drawData, _commandList);
 
             barrier.Union.Transition.StateBefore = D3D12_RESOURCE_STATE_RENDER_TARGET;
-            barrier.Union.Transition.StateAfter = D3D12_RESOURCE_STATE_PRESENT;
+            barrier.Union.Transition.StateAfter = D3D12_RESOURCE_STATE_COMMON;
             GraphicsCommandListResourceBarrier(_commandList, 1, &barrier);
 
             if (GraphicsCommandListClose(_commandList) < 0)
@@ -823,6 +961,16 @@ namespace PhantomRender.ImGui.Core.Renderers
             ulong nextFenceValue = ++_fenceValue;
             CommandQueueSignal(_commandQueue, _fence, nextFenceValue);
             frame.FenceValue = nextFenceValue;
+        }
+
+        private static void ConfigureSrvAllocator(D3D12CpuDescriptorHandle cpuStart, D3D12GpuDescriptorHandle gpuStart, uint descriptorSize, uint startIndex)
+        {
+            _srvAllocCpuStart = cpuStart.Ptr;
+            _srvAllocGpuStart = gpuStart.Ptr;
+            _srvAllocDescriptorSize = descriptorSize;
+            _srvAllocNextIndex = unchecked((int)startIndex);
+            Volatile.Write(ref _srvAllocatorReady, 1);
+            Volatile.Write(ref _srvAllocLoggedOutOfSpace, 0);
         }
 
         private void WaitForGpuIdle()

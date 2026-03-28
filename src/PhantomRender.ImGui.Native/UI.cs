@@ -5,6 +5,7 @@ using PhantomRender.Core;
 using PhantomRender.Overlays;
 using PhantomRender.ImGui.Core;
 using PhantomRender.ImGui.Core.Inputs;
+using PhantomRender.ImGui.Core.Renderers;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
 namespace PhantomRender.ImGui.Native
@@ -13,19 +14,28 @@ namespace PhantomRender.ImGui.Native
     {
         private readonly Overlay _overlay;
         private readonly ExternalOverlayWindow _externalWindow;
+        private readonly RendererBase _renderer;
         private InputImguiEmu _input;
         private bool _disposed;
         private bool _visible = true;
         private bool _showDemoWindow;
         private bool _shutdownRequested;
+        private readonly string _modeText;
+        private readonly string _rendererText;
 
         public UI(Overlay overlay, ExternalOverlayWindow externalWindow = null)
         {
             _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
             _externalWindow = externalWindow;
+            _renderer = (overlay as InternalOverlay)?.Renderer;
+            _modeText = $"Mode: {(externalWindow != null ? "External" : "Internal")}";
+            _rendererText = $"Renderer: {_overlay.GraphicsApi.ToDisplayName()}";
             _overlay.ImGuiInitialized += OnImGuiInitialized;
-            _overlay.NewFrame += OnNewFrame;
-            _overlay.Render += OnRender;
+            if (_renderer != null)
+            {
+                _renderer.OnOverlayNewFrame += OnNewFrame;
+                _renderer.OnOverlayRender += OnRender;
+            }
         }
 
         public bool ShutdownRequested => _shutdownRequested;
@@ -41,8 +51,11 @@ namespace PhantomRender.ImGui.Native
 
             _disposed = true;
             _overlay.ImGuiInitialized -= OnImGuiInitialized;
-            _overlay.NewFrame -= OnNewFrame;
-            _overlay.Render -= OnRender;
+            if (_renderer != null)
+            {
+                _renderer.OnOverlayNewFrame -= OnNewFrame;
+                _renderer.OnOverlayRender -= OnRender;
+            }
 
             if (_input != null)
             {
@@ -65,7 +78,7 @@ namespace PhantomRender.ImGui.Native
             SyncExternalWindow();
         }
 
-        private void OnNewFrame(object sender, OverlayFrameEventArgs e)
+        private void OnNewFrame()
         {
             if (_input == null)
             {
@@ -88,7 +101,7 @@ namespace PhantomRender.ImGui.Native
             SyncExternalWindow();
         }
 
-        private void OnRender(object sender, OverlayFrameEventArgs e)
+        private void OnRender()
         {
             if (!_visible)
             {
@@ -99,8 +112,8 @@ namespace PhantomRender.ImGui.Native
             bool begin = HexaImGui.Begin("PhantomRender", ref open, ImGuiWindowFlags.AlwaysAutoResize);
             if (begin)
             {
-                HexaImGui.Text($"Mode: {(_externalWindow != null ? "External" : "Internal")}");
-                HexaImGui.Text($"Renderer: {_overlay.GraphicsApi.ToDisplayName()}");
+                HexaImGui.Text(_modeText);
+                HexaImGui.Text(_rendererText);
                 HexaImGui.Separator();
                 HexaImGui.Text("Insert: Show/Hide menu");
                 HexaImGui.Text("Delete: Shutdown");

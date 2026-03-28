@@ -19,6 +19,8 @@ namespace PhantomRender.ImGui
         private OpenGLHook _openGLHook;
         private IntPtr _directX11SwapChainHandle;
         private IntPtr _directX11WindowHandle;
+        private IntPtr _directX12SwapChainHandle;
+        private IntPtr _directX12WindowHandle;
         private int _shutdownRequested;
         private bool _disposed;
 
@@ -377,12 +379,22 @@ namespace PhantomRender.ImGui
 
         private void HandleDirectX12Present(IntPtr swapChain, uint syncInterval, uint flags)
         {
+            if (!TryAcceptDirectX12SwapChain(swapChain))
+            {
+                return;
+            }
+
             RenderDxgiFrame(swapChain);
         }
 
         private void HandleDirectX12ResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
         {
             if (ShutdownRequested)
+            {
+                return;
+            }
+
+            if (_directX12SwapChainHandle != IntPtr.Zero && swapChain != _directX12SwapChainHandle)
             {
                 return;
             }
@@ -405,8 +417,14 @@ namespace PhantomRender.ImGui
                 return;
             }
 
-            IntPtr dx11WindowHandle = Renderer.GraphicsApi == GraphicsApi.DirectX11 ? _directX11WindowHandle : IntPtr.Zero;
-            if (!Renderer.IsInitialized && !dxgiRenderer.InitializeFromSwapChain(swapChain, dx11WindowHandle))
+            IntPtr dxgiWindowHandle = Renderer.GraphicsApi switch
+            {
+                GraphicsApi.DirectX11 => _directX11WindowHandle,
+                GraphicsApi.DirectX12 => _directX12WindowHandle,
+                _ => IntPtr.Zero,
+            };
+
+            if (!Renderer.IsInitialized && !dxgiRenderer.InitializeFromSwapChain(swapChain, dxgiWindowHandle))
             {
                 return;
             }
@@ -451,6 +469,45 @@ namespace PhantomRender.ImGui
 
             _directX11SwapChainHandle = swapChain;
             _directX11WindowHandle = outputWindow;
+            return true;
+        }
+
+        private bool TryAcceptDirectX12SwapChain(IntPtr swapChain)
+        {
+            if (swapChain == IntPtr.Zero || _directX12Hook == null)
+            {
+                return false;
+            }
+
+            if (_directX12SwapChainHandle != IntPtr.Zero)
+            {
+                return swapChain == _directX12SwapChainHandle;
+            }
+
+            if (!_directX12Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (!IsWindow(outputWindow))
+            {
+                return false;
+            }
+
+            outputWindow = GetAncestor(outputWindow, GA_ROOT);
+            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow) || !IsWindowVisible(outputWindow))
+            {
+                return false;
+            }
+
+            IntPtr preferredWindow = ResolveWindowHandle();
+            if (preferredWindow != IntPtr.Zero && outputWindow != preferredWindow)
+            {
+                return false;
+            }
+
+            _directX12SwapChainHandle = swapChain;
+            _directX12WindowHandle = outputWindow;
             return true;
         }
 
@@ -574,6 +631,8 @@ namespace PhantomRender.ImGui
                 }
 
                 _directX12Hook = null;
+                _directX12SwapChainHandle = IntPtr.Zero;
+                _directX12WindowHandle = IntPtr.Zero;
             }
 
             if (_openGLHook != null)
