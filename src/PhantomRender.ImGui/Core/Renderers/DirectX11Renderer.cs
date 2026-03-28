@@ -37,196 +37,193 @@ namespace PhantomRender.ImGui.Core.Renderers
         private nint _deviceContext;
         private nint _renderTargetView;
         private nint _renderTargetSwapChain;
+        private nint _getBufferSwapChain;
+        private readonly object _sync = new object();
+        private readonly Action _backendNewFrameAction;
+        private readonly Action _backendRenderAction;
+        private GetBufferDelegate _getBuffer;
+        private CreateRenderTargetViewDelegate _createRenderTargetView;
+        private OMGetRenderTargetsDelegate _omGetRenderTargets;
+        private OMSetRenderTargetsDelegate _omSetRenderTargets;
 
         public DirectX11Renderer()
             : base(GraphicsApi.DirectX11)
         {
+            _backendNewFrameAction = BackendNewFrame;
+            _backendRenderAction = BackendRender;
         }
 
         public override bool Initialize(nint device, nint windowHandle)
         {
-            if (IsInitialized)
+            lock (_sync)
             {
-                return true;
-            }
+                if (IsInitialized)
+                {
+                    return true;
+                }
 
-            if (device == IntPtr.Zero || windowHandle == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            nint immediateContext = IntPtr.Zero;
-            try
-            {
-                RaiseRendererInitializing(device, windowHandle);
-
-                immediateContext = GetImmediateContext(device);
-                if (immediateContext == IntPtr.Zero)
+                if (device == IntPtr.Zero || windowHandle == IntPtr.Zero)
                 {
                     return false;
                 }
 
-                InitializeImGui(windowHandle);
-
-                ImGuiImplD3D11.SetCurrentContext(Context);
-                if (!ImGuiImplD3D11.Init((ID3D11Device*)device, (ID3D11DeviceContext*)immediateContext))
-                {
-                    ShutdownImGui();
-                    return false;
-                }
-
-                Marshal.AddRef(device);
-                _device = device;
-                _deviceContext = immediateContext;
-                immediateContext = IntPtr.Zero;
-                IsInitialized = true;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.Initialize", ex);
-
+                nint immediateContext = IntPtr.Zero;
                 try
                 {
-                    if (!Context.IsNull)
+                    RaiseRendererInitializing(device, windowHandle);
+
+                    immediateContext = GetImmediateContext(device);
+                    if (immediateContext == IntPtr.Zero)
                     {
-                        ImGuiImplD3D11.SetCurrentContext(Context);
-                        ImGuiImplD3D11.Shutdown();
+                        return false;
                     }
-                }
-                catch
-                {
-                }
 
-                try
-                {
-                    ShutdownImGui();
-                }
-                catch
-                {
-                }
+                    if (!CacheDeviceFunctions(device, immediateContext))
+                    {
+                        ResetCachedDelegates();
+                        ReleaseComObject(immediateContext);
+                        immediateContext = IntPtr.Zero;
+                        return false;
+                    }
 
-                ReleaseComObject(immediateContext);
-                ReleaseDeviceResources();
-                return false;
+                    InitializeImGui(windowHandle);
+
+                    ImGuiImplD3D11.SetCurrentContext(Context);
+                    if (!ImGuiImplD3D11.Init((ID3D11Device*)device, (ID3D11DeviceContext*)immediateContext))
+                    {
+                        ShutdownImGui();
+                        ResetCachedDelegates();
+                        ReleaseComObject(immediateContext);
+                        immediateContext = IntPtr.Zero;
+                        return false;
+                    }
+
+                    Marshal.AddRef(device);
+                    _device = device;
+                    _deviceContext = immediateContext;
+                    immediateContext = IntPtr.Zero;
+                    IsInitialized = true;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX11.Initialize", ex);
+
+                    try
+                    {
+                        if (!Context.IsNull)
+                        {
+                            ImGuiImplD3D11.SetCurrentContext(Context);
+                            ImGuiImplD3D11.Shutdown();
+                        }
+                    }
+                    catch
+                    {
+                    }
+
+                    try
+                    {
+                        ShutdownImGui();
+                    }
+                    catch
+                    {
+                    }
+
+                    ReleaseComObject(immediateContext);
+                    ResetCachedDelegates();
+                    ReleaseDeviceResources();
+                    return false;
+                }
             }
         }
 
         public override void NewFrame()
         {
-            if (!IsInitialized || FrameStarted)
+            lock (_sync)
             {
-                return;
-            }
-
-            try
-            {
-                BeginFrameCore(() =>
+                if (!IsInitialized || FrameStarted || _deviceContext == IntPtr.Zero || Context.IsNull)
                 {
-                    ImGuiImplD3D11.SetCurrentContext(Context);
-                    ImGuiImplD3D11.NewFrame();
-                    ImGuiImplWin32.SetCurrentContext(Context);
-                    ImGuiImplWin32.NewFrame();
-                });
+                    return;
+                }
 
-                FrameStarted = true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.NewFrame", ex);
+                try
+                {
+                    BeginFrameCore(_backendNewFrameAction);
+                    FrameStarted = true;
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX11.NewFrame", ex);
+                }
             }
         }
 
         public override unsafe void Render(nint swapChain)
         {
-            if (!IsInitialized || !FrameStarted)
+            lock (_sync)
             {
-                return;
-            }
-
-            if (swapChain != IntPtr.Zero)
-            {
-                if (SwapChainHandle == IntPtr.Zero)
+                if (!IsInitialized || !FrameStarted || _deviceContext == IntPtr.Zero || Context.IsNull)
                 {
-                    SwapChainHandle = swapChain;
-                }
-                else if (swapChain != SwapChainHandle)
-                {
-                    FrameStarted = false;
                     return;
                 }
-            }
 
-            try
-            {
-                RenderFrameCore(() =>
+                if (swapChain != IntPtr.Zero)
                 {
                     if (SwapChainHandle == IntPtr.Zero)
                     {
+                        SwapChainHandle = swapChain;
+                    }
+                    else if (swapChain != SwapChainHandle)
+                    {
+                        FrameStarted = false;
                         return;
                     }
+                }
 
-                    if (!EnsureRenderTarget(SwapChainHandle))
-                    {
-                        return;
-                    }
-
-                    nint previousRenderTarget = IntPtr.Zero;
-                    nint previousDepthStencil = IntPtr.Zero;
-
-                    try
-                    {
-                        if (!TryBackupOutputMergerState(out previousRenderTarget, out previousDepthStencil))
-                        {
-                            return;
-                        }
-
-                        if (!BindRenderTarget(_renderTargetView))
-                        {
-                            return;
-                        }
-
-                        ImGuiImplD3D11.SetCurrentContext(Context);
-                        ImGuiImplD3D11.RenderDrawData(HexaImGui.GetDrawData());
-                    }
-                    finally
-                    {
-                        RestoreOutputMergerState(previousRenderTarget, previousDepthStencil);
-                        ReleaseComObject(previousRenderTarget);
-                        ReleaseComObject(previousDepthStencil);
-                    }
-                });
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.Render", ex);
-            }
-            finally
-            {
-                FrameStarted = false;
+                try
+                {
+                    RenderFrameCore(_backendRenderAction);
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX11.Render", ex);
+                }
+                finally
+                {
+                    FrameStarted = false;
+                }
             }
         }
 
         public override void OnBeforeResizeBuffers(nint swapChain)
         {
-            base.OnBeforeResizeBuffers(swapChain);
-            ReleaseRenderTarget();
+            lock (_sync)
+            {
+                base.OnBeforeResizeBuffers(swapChain);
+                ReleaseRenderTarget();
+            }
         }
 
         public override void OnAfterResizeBuffers(nint swapChain)
         {
-            base.OnAfterResizeBuffers(swapChain);
-            if (swapChain != IntPtr.Zero)
+            lock (_sync)
             {
-                SwapChainHandle = swapChain;
-            }
+                base.OnAfterResizeBuffers(swapChain);
+                if (swapChain != IntPtr.Zero)
+                {
+                    SwapChainHandle = swapChain;
+                }
 
-            ReleaseRenderTarget();
+                ReleaseRenderTarget();
+            }
         }
 
         public override void OnLostDevice()
         {
-            ReleaseRenderTarget();
+            lock (_sync)
+            {
+                ReleaseRenderTarget();
+            }
         }
 
         public override void OnResetDevice()
@@ -235,31 +232,35 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         public override void Dispose()
         {
-            try
+            lock (_sync)
             {
-                ReleaseRenderTarget();
-
-                if (IsInitialized)
+                try
                 {
-                    if (!Context.IsNull)
-                    {
-                        ImGuiImplD3D11.SetCurrentContext(Context);
-                    }
+                    ReleaseRenderTarget();
 
-                    ImGuiImplD3D11.Shutdown();
+                    if (IsInitialized)
+                    {
+                        if (!Context.IsNull)
+                        {
+                            ImGuiImplD3D11.SetCurrentContext(Context);
+                        }
+
+                        ImGuiImplD3D11.Shutdown();
+                    }
                 }
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX11.Dispose", ex);
-            }
-            finally
-            {
-                ReleaseDeviceResources();
-                ShutdownImGui();
-                IsInitialized = false;
-                FrameStarted = false;
-                SwapChainHandle = IntPtr.Zero;
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX11.Dispose", ex);
+                }
+                finally
+                {
+                    ReleaseDeviceResources();
+                    ResetCachedDelegates();
+                    ShutdownImGui();
+                    IsInitialized = false;
+                    FrameStarted = false;
+                    SwapChainHandle = IntPtr.Zero;
+                }
             }
         }
 
@@ -270,13 +271,12 @@ namespace PhantomRender.ImGui.Core.Renderers
 
         private static nint GetImmediateContext(nint device)
         {
-            nint address = GetVTableFunctionAddress(device, VTABLE_ID3D11DEVICE_GET_IMMEDIATE_CONTEXT);
-            if (address == IntPtr.Zero)
+            GetImmediateContextDelegate getImmediateContext = GetVTableDelegate<GetImmediateContextDelegate>(device, VTABLE_ID3D11DEVICE_GET_IMMEDIATE_CONTEXT);
+            if (getImmediateContext == null)
             {
                 return IntPtr.Zero;
             }
 
-            var getImmediateContext = Marshal.GetDelegateForFunctionPointer<GetImmediateContextDelegate>(address);
             getImmediateContext(device, out nint immediateContext);
             return immediateContext;
         }
@@ -320,93 +320,62 @@ namespace PhantomRender.ImGui.Core.Renderers
         private bool TryGetSwapChainBuffer(nint swapChain, out nint buffer)
         {
             buffer = IntPtr.Zero;
-
-            nint getBufferAddress = GetVTableFunctionAddress(swapChain, VTABLE_IDXGI_SWAPCHAIN_GET_BUFFER);
-            if (getBufferAddress == IntPtr.Zero)
+            if (!CacheSwapChainFunctions(swapChain) || _getBuffer == null)
             {
                 return false;
             }
 
-            var getBuffer = Marshal.GetDelegateForFunctionPointer<GetBufferDelegate>(getBufferAddress);
             Guid iid = IID_ID3D11Texture2D;
-            return getBuffer(swapChain, 0, ref iid, out buffer) >= 0 && buffer != IntPtr.Zero;
+            return _getBuffer(swapChain, 0, ref iid, out buffer) >= 0 && buffer != IntPtr.Zero;
         }
 
-        private static bool TryCreateRenderTargetView(nint device, nint resource, out nint renderTargetView)
+        private bool TryCreateRenderTargetView(nint device, nint resource, out nint renderTargetView)
         {
             renderTargetView = IntPtr.Zero;
-            if (device == IntPtr.Zero || resource == IntPtr.Zero)
+            if (device == IntPtr.Zero || resource == IntPtr.Zero || _createRenderTargetView == null)
             {
                 return false;
             }
 
-            nint createRenderTargetViewAddress = GetVTableFunctionAddress(device, VTABLE_ID3D11DEVICE_CREATE_RENDER_TARGET_VIEW);
-            if (createRenderTargetViewAddress == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            var createRenderTargetView = Marshal.GetDelegateForFunctionPointer<CreateRenderTargetViewDelegate>(createRenderTargetViewAddress);
-            return createRenderTargetView(device, resource, IntPtr.Zero, out renderTargetView) >= 0 && renderTargetView != IntPtr.Zero;
+            return _createRenderTargetView(device, resource, IntPtr.Zero, out renderTargetView) >= 0 && renderTargetView != IntPtr.Zero;
         }
 
         private unsafe bool TryBackupOutputMergerState(out nint renderTargetView, out nint depthStencilView)
         {
             renderTargetView = IntPtr.Zero;
             depthStencilView = IntPtr.Zero;
-            if (_deviceContext == IntPtr.Zero)
+            if (_deviceContext == IntPtr.Zero || _omGetRenderTargets == null)
             {
                 return false;
             }
 
-            nint omGetRenderTargetsAddress = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DEVICECONTEXT_OM_GET_RENDER_TARGETS);
-            if (omGetRenderTargetsAddress == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            var omGetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMGetRenderTargetsDelegate>(omGetRenderTargetsAddress);
             nint currentRenderTargetView = IntPtr.Zero;
-            omGetRenderTargets(_deviceContext, 1, &currentRenderTargetView, out depthStencilView);
+            _omGetRenderTargets(_deviceContext, 1, &currentRenderTargetView, out depthStencilView);
             renderTargetView = currentRenderTargetView;
             return true;
         }
 
         private unsafe bool BindRenderTarget(nint renderTargetView)
         {
-            if (_deviceContext == IntPtr.Zero || renderTargetView == IntPtr.Zero)
+            if (_deviceContext == IntPtr.Zero || renderTargetView == IntPtr.Zero || _omSetRenderTargets == null)
             {
                 return false;
             }
 
-            nint omSetRenderTargetsAddress = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DEVICECONTEXT_OM_SET_RENDER_TARGETS);
-            if (omSetRenderTargetsAddress == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddress);
             nint currentRenderTargetView = renderTargetView;
-            omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, IntPtr.Zero);
+            _omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, IntPtr.Zero);
             return true;
         }
 
         private unsafe void RestoreOutputMergerState(nint renderTargetView, nint depthStencilView)
         {
-            if (_deviceContext == IntPtr.Zero)
+            if (_deviceContext == IntPtr.Zero || _omSetRenderTargets == null)
             {
                 return;
             }
 
-            nint omSetRenderTargetsAddress = GetVTableFunctionAddress(_deviceContext, VTABLE_ID3D11DEVICECONTEXT_OM_SET_RENDER_TARGETS);
-            if (omSetRenderTargetsAddress == IntPtr.Zero)
-            {
-                return;
-            }
-
-            var omSetRenderTargets = Marshal.GetDelegateForFunctionPointer<OMSetRenderTargetsDelegate>(omSetRenderTargetsAddress);
             nint currentRenderTargetView = renderTargetView;
-            omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, depthStencilView);
+            _omSetRenderTargets(_deviceContext, 1, &currentRenderTargetView, depthStencilView);
         }
 
         private void ReleaseRenderTarget()
@@ -423,6 +392,105 @@ namespace PhantomRender.ImGui.Core.Renderers
 
             ReleaseComObject(_device);
             _device = IntPtr.Zero;
+        }
+
+        private void BackendNewFrame()
+        {
+            ImGuiImplD3D11.SetCurrentContext(Context);
+            ImGuiImplD3D11.NewFrame();
+            ImGuiImplWin32.SetCurrentContext(Context);
+            ImGuiImplWin32.NewFrame();
+        }
+
+        private void BackendRender()
+        {
+            if (SwapChainHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            if (!EnsureRenderTarget(SwapChainHandle))
+            {
+                return;
+            }
+
+            nint previousRenderTarget = IntPtr.Zero;
+            nint previousDepthStencil = IntPtr.Zero;
+
+            try
+            {
+                if (!TryBackupOutputMergerState(out previousRenderTarget, out previousDepthStencil))
+                {
+                    return;
+                }
+
+                if (!BindRenderTarget(_renderTargetView))
+                {
+                    return;
+                }
+
+                ImGuiImplD3D11.SetCurrentContext(Context);
+                ImGuiImplD3D11.RenderDrawData(HexaImGui.GetDrawData());
+            }
+            finally
+            {
+                RestoreOutputMergerState(previousRenderTarget, previousDepthStencil);
+                ReleaseComObject(previousRenderTarget);
+                ReleaseComObject(previousDepthStencil);
+            }
+        }
+
+        private bool CacheDeviceFunctions(nint device, nint deviceContext)
+        {
+            _createRenderTargetView = GetVTableDelegate<CreateRenderTargetViewDelegate>(device, VTABLE_ID3D11DEVICE_CREATE_RENDER_TARGET_VIEW);
+            _omGetRenderTargets = GetVTableDelegate<OMGetRenderTargetsDelegate>(deviceContext, VTABLE_ID3D11DEVICECONTEXT_OM_GET_RENDER_TARGETS);
+            _omSetRenderTargets = GetVTableDelegate<OMSetRenderTargetsDelegate>(deviceContext, VTABLE_ID3D11DEVICECONTEXT_OM_SET_RENDER_TARGETS);
+
+            return _createRenderTargetView != null &&
+                   _omGetRenderTargets != null &&
+                   _omSetRenderTargets != null;
+        }
+
+        private bool CacheSwapChainFunctions(nint swapChain)
+        {
+            if (swapChain == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            if (_getBuffer != null && _getBufferSwapChain == swapChain)
+            {
+                return true;
+            }
+
+            _getBuffer = GetVTableDelegate<GetBufferDelegate>(swapChain, VTABLE_IDXGI_SWAPCHAIN_GET_BUFFER);
+            _getBufferSwapChain = _getBuffer != null ? swapChain : IntPtr.Zero;
+            return _getBuffer != null;
+        }
+
+        private void ResetCachedDelegates()
+        {
+            _getBuffer = null;
+            _createRenderTargetView = null;
+            _omGetRenderTargets = null;
+            _omSetRenderTargets = null;
+            _getBufferSwapChain = IntPtr.Zero;
+        }
+
+        private static TDelegate GetVTableDelegate<TDelegate>(nint instance, int functionIndex)
+            where TDelegate : class
+        {
+            nint address = GetVTableFunctionAddress(instance, functionIndex);
+            if (address == IntPtr.Zero)
+            {
+                return null;
+            }
+
+#if NET5_0_OR_GREATER
+            return Marshal.GetDelegateForFunctionPointer<TDelegate>(address);
+#else
+            return Marshal.GetDelegateForFunctionPointer(address, typeof(TDelegate)) as TDelegate;
+#endif
         }
     }
 }
