@@ -21,6 +21,8 @@ namespace PhantomRender.ImGui
         private IntPtr _directX9WindowHandle;
         private int _directX9PresentThreadId;
         private bool _directX9LoggedThreadMismatch;
+        private IntPtr _openGLDeviceContext;
+        private IntPtr _openGLRenderingContext;
         private IntPtr _openGLWindowHandle;
         private int _openGLPresentThreadId;
         private bool _openGLLoggedThreadMismatch;
@@ -189,6 +191,8 @@ namespace PhantomRender.ImGui
             }
 
             _openGLHook = new OpenGLHook();
+            _openGLDeviceContext = IntPtr.Zero;
+            _openGLRenderingContext = IntPtr.Zero;
             _openGLWindowHandle = IntPtr.Zero;
             _openGLPresentThreadId = 0;
             _openGLLoggedThreadMismatch = false;
@@ -340,6 +344,8 @@ namespace PhantomRender.ImGui
                 return;
             }
 
+            IntPtr renderingContext = wglGetCurrentContext();
+
             IntPtr windowHandle = WindowFromDC(hdc);
             if (windowHandle == IntPtr.Zero)
             {
@@ -351,7 +357,7 @@ namespace PhantomRender.ImGui
                 return;
             }
 
-            if (!TryAcceptOpenGLWindow(windowHandle))
+            if (!TryAcceptOpenGLTarget(hdc, windowHandle, renderingContext))
             {
                 return;
             }
@@ -647,9 +653,9 @@ namespace PhantomRender.ImGui
             return true;
         }
 
-        private bool TryAcceptOpenGLWindow(IntPtr windowHandle)
+        private bool TryAcceptOpenGLTarget(IntPtr hdc, IntPtr windowHandle, IntPtr renderingContext)
         {
-            if (windowHandle == IntPtr.Zero)
+            if (hdc == IntPtr.Zero || windowHandle == IntPtr.Zero)
             {
                 return false;
             }
@@ -666,43 +672,61 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
-            if (_openGLWindowHandle != IntPtr.Zero)
-            {
-                if (rootWindow != _openGLWindowHandle)
-                {
-                    return false;
-                }
-
-                if (_openGLPresentThreadId == 0)
-                {
-                    _openGLPresentThreadId = currentThreadId;
-                    return true;
-                }
-
-                if (currentThreadId == _openGLPresentThreadId)
-                {
-                    return true;
-                }
-
-                if (!_openGLLoggedThreadMismatch)
-                {
-                    _openGLLoggedThreadMismatch = true;
-                    Console.WriteLine($"[PhantomRender] OpenGL: ignoring SwapBuffers from thread {currentThreadId}, owner thread is {_openGLPresentThreadId}.");
-                }
-
-                return false;
-            }
-
             IntPtr preferredWindow = ResolveWindowHandle();
             if (preferredWindow != IntPtr.Zero && rootWindow != preferredWindow)
             {
                 return false;
             }
 
-            _openGLWindowHandle = rootWindow;
-            _openGLPresentThreadId = currentThreadId;
-            _openGLLoggedThreadMismatch = false;
+            if (_openGLWindowHandle != IntPtr.Zero)
+            {
+                if (_openGLPresentThreadId != 0 && currentThreadId != _openGLPresentThreadId)
+                {
+                    if (!_openGLLoggedThreadMismatch)
+                    {
+                        _openGLLoggedThreadMismatch = true;
+                        Console.WriteLine($"[PhantomRender] OpenGL: ignoring SwapBuffers from thread {currentThreadId}, owner thread is {_openGLPresentThreadId}.");
+                    }
+
+                    return false;
+                }
+
+                bool targetChanged =
+                    rootWindow != _openGLWindowHandle ||
+                    hdc != _openGLDeviceContext ||
+                    (renderingContext != IntPtr.Zero &&
+                     _openGLRenderingContext != IntPtr.Zero &&
+                     renderingContext != _openGLRenderingContext);
+
+                if (!targetChanged)
+                {
+                    return true;
+                }
+
+                ResetOpenGLRendererForTargetChange(rootWindow, hdc, renderingContext);
+            }
+
+            UpdateOpenGLTarget(rootWindow, hdc, renderingContext, currentThreadId);
             return true;
+        }
+
+        private void ResetOpenGLRendererForTargetChange(IntPtr windowHandle, IntPtr hdc, IntPtr renderingContext)
+        {
+            if (Renderer.IsInitialized)
+            {
+                Console.WriteLine(
+                    $"[PhantomRender] OpenGL: swap target changed (HWND=0x{windowHandle.ToInt64():X}, HDC=0x{hdc.ToInt64():X}, HGLRC=0x{renderingContext.ToInt64():X}), reinitializing renderer.");
+                Renderer.Dispose();
+            }
+        }
+
+        private void UpdateOpenGLTarget(IntPtr windowHandle, IntPtr hdc, IntPtr renderingContext, int threadId)
+        {
+            _openGLWindowHandle = windowHandle;
+            _openGLDeviceContext = hdc;
+            _openGLRenderingContext = renderingContext;
+            _openGLPresentThreadId = threadId;
+            _openGLLoggedThreadMismatch = false;
         }
 
         private bool TryAcceptDirectX11SwapChain(IntPtr swapChain)
@@ -982,6 +1006,8 @@ namespace PhantomRender.ImGui
                 }
 
                 _openGLHook = null;
+                _openGLDeviceContext = IntPtr.Zero;
+                _openGLRenderingContext = IntPtr.Zero;
                 _openGLWindowHandle = IntPtr.Zero;
                 _openGLPresentThreadId = 0;
                 _openGLLoggedThreadMismatch = false;
@@ -1015,6 +1041,9 @@ namespace PhantomRender.ImGui
 
         [DllImport("kernel32.dll")]
         private static extern int GetCurrentThreadId();
+
+        [DllImport("opengl32.dll")]
+        private static extern IntPtr wglGetCurrentContext();
 
         private const uint GA_ROOT = 2;
     }

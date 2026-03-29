@@ -68,6 +68,7 @@ namespace PhantomRender.ImGui.Native
         {
             ApplyStyle();
 
+            _input?.ClearEvents();
             _input = new InputImguiEmu(e.IO, e.Renderer.WindowHandle)
             {
                 KeyRepeatDelay = TimeSpan.FromMilliseconds(150),
