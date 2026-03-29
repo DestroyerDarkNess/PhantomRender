@@ -8,13 +8,12 @@
   <img src="https://img.shields.io/badge/arch-x86%20%7C%20x64-555555.svg?style=flat-square" alt="arch"/>
 </p>
 <p align="center">
-  Universal graphics hook + ImGui injected runtime for Windows games (DX9/DXGI/OpenGL).
+  Universal graphics hook + ImGui injected runtime for Windows games and applications.
 </p>
 <p align="center">
-  <a href="./Games.md">Games Tested Gallery</a>
+  <a href="./Games.md">Games Tested Gallery</a> ·
+  <a href="./KNOWN_ISSUES.md">Known Issues</a>
 </p>
-
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
 
 ## Table of Contents
 
@@ -22,136 +21,143 @@
 - [Project Structure](#project-structure)
 - [Features](#features)
 - [Graphics Support](#graphics-support)
-- [Build](#build)
+- [Build And Publish](#build-and-publish)
 - [Injection Quick Start](#injection-quick-start)
 - [Diagnostics](#diagnostics)
-- [Roadmap](#roadmap)
+- [Known Issues](#known-issues)
+- [Future Work](#future-work)
 - [License](#license)
-
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
 
 ## Overview
 
-PhantomRender is the successor of RenderSpy focused on modern .NET and injected overlays.
+PhantomRender is an injected ImGui overlay host for Windows titles that use:
 
-It provides:
-- Graphics hook backends (DXGI, DX9, OpenGL).
-- ImGui renderers for DirectX 9/10/11/12 and OpenGL.
-- NativeAOT bootstrap DLL (`PhantomRender.ImGui.Native.dll`) with `DllMain` export.
-- Automatic backend probing and activation.
-- Per-process log output for debugging injected sessions.
+- DirectX 9
+- DirectX 10
+- DirectX 11
+- DirectX 12
+- OpenGL
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+The current codebase is focused on a clean internal overlay path:
+
+- native bootstrap DLL with `DllMain` entry point
+- automatic graphics API detection
+- one active backend per process
+- robust resize/reset handling
+- minimized managed allocations in hot render paths
+- file logging for injected sessions
 
 ## Project Structure
 
 | Project | Description |
 |---|---|
-| `src/PhantomRender` | Core hooks and low-level graphics/input interop (`MinHook.NET`, DX9/DXGI/OpenGL hook classes). |
-| `src/PhantomRender.ImGui` | Overlay manager and ImGui renderer layer (DX9/DX10/DX11/DX12/OpenGL renderers). |
-| `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, crash/log diagnostics, default overlay bootstrap/UI. |
-
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+| `src/PhantomRender` | Core hooks and low-level graphics/input interop. |
+| `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL. |
+| `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, logging, and default sample UI. |
 
 ## Features
 
-- Auto backend probe order with single-active-backend lock.
-- DXGI path with runtime API detection (DX10 / DX11 / DX12 device query).
-- DX9 `Present` and `EndScene` modes.
+- Automatic backend probe and activation.
+- DXGI-based hook path for DX10, DX11, and DX12.
+- DX9 `Present` and `EndScene` support.
 - OpenGL `wglSwapBuffers` hook path.
-- ImGui context bootstrapping + backend binding (Win32 + graphics backend).
-- Runtime crash/log instrumentation for injected processes.
-- Default overlay UI (hidden by default, toggle with `Insert`).
-
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+- Owner-thread pinning for render callbacks to avoid unstable cross-thread entry into the runtime.
+- DXGI resize recovery and OpenGL target/context reinitialization on display changes.
+- Reduced per-frame delegate/allocation churn across render backends.
+- Built-in sample UI with `Insert` toggle and `Delete` shutdown hotkeys.
+- Persistent file logging for injected sessions.
 
 ## Graphics Support
 
 | API | Status | Notes |
 |---|---|---|
-| DirectX 9 | Supported | `Present` and `EndScene` hook modes. |
-| DirectX 10 | Supported | Through DXGI `IDXGISwapChain::Present`. |
-| DirectX 11 | Supported | Primary tested path for modern desktop titles. |
-| DirectX 12 | Experimental | Renderer exists under `NET5_0_OR_GREATER`; title-specific validation required. |
-| OpenGL | Supported | `wglSwapBuffers` hook path. |
-| Vulkan | Not implemented | Planned roadmap item. |
+| DirectX 9 | Supported | `Present` and `EndScene` modes are implemented. |
+| DirectX 10 | Supported | DXGI `IDXGISwapChain::Present` path. |
+| DirectX 11 | Supported | Stable resize path and owner-thread filtering. |
+| DirectX 12 | Supported | Queue capture + minimal ImGui command path; still validate per title. |
+| OpenGL | Supported | `wglSwapBuffers` hook path with target/context reinit on change. |
+| Vulkan | Not implemented | Out of scope for the current release. |
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
-
-## Build
+## Build And Publish
 
 ### Requirements
 
 - Windows
-- Visual Studio 2022 (or compatible Build Tools)
 - .NET 9 SDK
+- Visual Studio 2022 or compatible MSVC build tools for NativeAOT publish
 
-### Build command
+### Debug build
 
 ```powershell
-dotnet build src/PhantomRender.sln -c Release -p:Platform=x64
+dotnet build src/PhantomRender.ImGui.Native/PhantomRender.ImGui.Native.csproj -c Debug -p:AutoPublishOnBuild=false
 ```
 
-### Native output (default x64)
+### Release publish
 
-After build/publish, native runtime artifacts are copied to:
+```powershell
+dotnet publish src/PhantomRender.ImGui.Native/PhantomRender.ImGui.Native.csproj -c Release -r win-x64 -p:SkipAutoPublish=true
+```
+
+### Published output
+
+The default injected payload is produced at:
 
 ```text
-src/PhantomRender.ImGui.Native/bin/x64/Release/net9.0/win-x64/native/
+src/PhantomRender.ImGui.Native/bin/Release/net9.0/win-x64/publish/
 ```
 
-This folder contains:
+That folder contains:
+
 - `PhantomRender.ImGui.Native.dll`
 - `cimgui.dll`
 - `ImGuiImpl.dll`
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
-
 ## Injection Quick Start
 
-1. Build in `Release|x64`.
+1. Publish the native host in `Release`.
 2. Inject `PhantomRender.ImGui.Native.dll` into the target process.
-3. Ensure `cimgui.dll` and `ImGuiImpl.dll` are in the same folder as the injected DLL.
-4. Start the game/application.
-5. Press `Insert` to toggle the default overlay UI.
+3. Keep `cimgui.dll` and `ImGuiImpl.dll` next to the injected DLL.
+4. Start or resume the target process.
+5. Use `Insert` to show or hide the sample UI.
+6. Use `Delete` to request overlay shutdown.
 
 Notes:
-- Overlay starts hidden by design.
-- Hook selection defaults to `Auto` (`OverlayHookKind.Auto`).
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+- The sample internal UI starts visible in the default native host.
+- Backend selection defaults to automatic detection.
 
 ## Diagnostics
 
-On injection, PhantomRender mirrors console output into a per-process file log:
+On startup, the native host redirects console output to:
 
 ```text
-<native output folder>/<process-name>.log
+<publish folder>/PhantomRender.Native.log
 ```
 
-Example:
+If that folder is not writable, it falls back to:
 
 ```text
-.../native/witcher3.log
+%TEMP%\PhantomRender\PhantomRender.Native.log
 ```
 
-Log includes:
-- session header with timestamp and PID
-- dependency load results (`cimgui.dll`, `ImGuiImpl.dll`)
-- hook activation path
-- renderer initialization trace
-- runtime errors/exceptions
+The log includes:
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+- graphics API detection
+- dependency load status
+- hook activation
+- renderer initialization
+- resize/reset/context change events
+- runtime errors and exceptions
 
-## Roadmap
+## Known Issues
 
-- Improve DX11 stability in long sessions and edge swapchain scenarios.
-- Expand DX12 validation across more engines/titles.
-- Add Vulkan hook/render path.
-- Add samples repo for custom UI and plugin-style integrations.
+See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).
 
-[![-----------------------------------------------------](https://raw.githubusercontent.com/andreasbm/readme/master/assets/lines/colored.png)](#table-of-contents)
+## Future Work
+
+- Add Vulkan support.
+- Expand compatibility coverage across more tested titles.
+- Add dedicated samples for custom overlay UIs and integrations.
 
 ## License
 
