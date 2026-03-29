@@ -12,10 +12,15 @@ namespace PhantomRender.Core.Hooks.Graphics
         private const int VTABLE_PRESENT = 8;
         private const int VTABLE_GET_DESC = 12;
         private const int VTABLE_RESIZE_BUFFERS = 13;
+        private const int VTABLE_PRESENT1 = 22;
         private static readonly Guid IID_ID3D11Device = new Guid("db6f6ddb-ac77-4e88-8253-819df9bbf140");
+        private static readonly Guid IID_IDXGISwapChain1 = new Guid("790a45f7-0d42-4876-983a-0a55cfe6f4aa");
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int PresentDelegate(IntPtr swapChain, uint syncInterval, uint flags);
+
+        [UnmanagedFunctionPointer(CallingConvention.StdCall)]
+        private delegate int Present1Delegate(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters);
 
         [UnmanagedFunctionPointer(CallingConvention.StdCall)]
         public delegate int ResizeBuffersDelegate(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags);
@@ -32,6 +37,7 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private readonly HookEngine _hookEngine;
         private readonly PresentDelegate _originalPresent;
+        private readonly Present1Delegate _originalPresent1;
         private readonly ResizeBuffersDelegate _originalResizeBuffers;
         private readonly bool _hookResizeBuffers;
 
@@ -61,6 +67,8 @@ namespace PhantomRender.Core.Hooks.Graphics
                 IntPtr resizeBuffersAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_RESIZE_BUFFERS * IntPtr.Size);
                 _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddress, ResizeBuffersHook);
             }
+
+            _originalPresent1 = TryHookPresent1(swapChainAddress);
         }
 
         public void Enable()
@@ -234,6 +242,33 @@ namespace PhantomRender.Core.Hooks.Graphics
             }
         }
 
+        private int Present1Hook(IntPtr swapChain, uint syncInterval, uint flags, IntPtr presentParameters)
+        {
+            if (_presentDepth > 0)
+            {
+                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
+            }
+
+            _presentDepth++;
+            try
+            {
+                try
+                {
+                    OnPresent?.Invoke(swapChain, syncInterval, flags);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DX11 Present1 error: {ex}");
+                }
+
+                return _originalPresent1(swapChain, syncInterval, flags, presentParameters);
+            }
+            finally
+            {
+                _presentDepth--;
+            }
+        }
+
         private int ResizeBuffersHook(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
         {
             if (!_hookResizeBuffers || _originalResizeBuffers == null)
@@ -274,6 +309,41 @@ namespace PhantomRender.Core.Hooks.Graphics
             finally
             {
                 _resizeDepth--;
+            }
+        }
+
+        private Present1Delegate TryHookPresent1(IntPtr swapChain)
+        {
+            try
+            {
+                IntPtr swapChain1 = IntPtr.Zero;
+                Guid iid = IID_IDXGISwapChain1;
+                int hr = Marshal.QueryInterface(swapChain, ref iid, out swapChain1);
+                if (hr < 0 || swapChain1 == IntPtr.Zero)
+                {
+                    return null;
+                }
+
+                try
+                {
+                    IntPtr vTable1 = MemoryUtils.ReadIntPtr(swapChain1);
+                    IntPtr present1Address = MemoryUtils.ReadIntPtr(vTable1 + VTABLE_PRESENT1 * IntPtr.Size);
+                    if (present1Address == IntPtr.Zero)
+                    {
+                        return null;
+                    }
+
+                    return _hookEngine.CreateHook<Present1Delegate>(present1Address, Present1Hook);
+                }
+                finally
+                {
+                    Marshal.Release(swapChain1);
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"[PhantomRender] DX11 Present1 hook init failed: {ex}");
+                return null;
             }
         }
 

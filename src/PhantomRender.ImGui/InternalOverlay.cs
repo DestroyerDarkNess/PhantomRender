@@ -625,18 +625,10 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
-            if (!_directX10Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            if (!IsWindow(outputWindow))
-            {
-                return false;
-            }
-
-            outputWindow = GetAncestor(outputWindow, GA_ROOT);
-            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow) || !IsWindowVisible(outputWindow))
+            IntPtr outputWindow = IntPtr.Zero;
+            _directX10Hook.TryGetOutputWindow(swapChain, out outputWindow);
+            outputWindow = ResolveDxgiWindowHandle(outputWindow);
+            if (outputWindow == IntPtr.Zero)
             {
                 return false;
             }
@@ -863,6 +855,32 @@ namespace PhantomRender.ImGui
             _openGLLoggedThreadMismatch = false;
         }
 
+        private IntPtr ResolveDxgiWindowHandle(IntPtr outputWindow)
+        {
+            if (outputWindow == IntPtr.Zero)
+            {
+                outputWindow = ResolveWindowHandle();
+            }
+
+            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow))
+            {
+                return IntPtr.Zero;
+            }
+
+            IntPtr rootWindow = GetAncestor(outputWindow, GA_ROOT);
+            if (rootWindow == IntPtr.Zero)
+            {
+                rootWindow = outputWindow;
+            }
+
+            if (!IsWindow(rootWindow) || !IsWindowVisible(rootWindow))
+            {
+                return IntPtr.Zero;
+            }
+
+            return rootWindow;
+        }
+
         private bool TryAcceptDirectX11SwapChain(IntPtr swapChain)
         {
             if (swapChain == IntPtr.Zero || _directX11Hook == null)
@@ -898,18 +916,10 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
-            if (!_directX11Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            if (!IsWindow(outputWindow))
-            {
-                return false;
-            }
-
-            outputWindow = GetAncestor(outputWindow, GA_ROOT);
-            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow) || !IsWindowVisible(outputWindow))
+            IntPtr outputWindow = IntPtr.Zero;
+            _directX11Hook.TryGetOutputWindow(swapChain, out outputWindow);
+            outputWindow = ResolveDxgiWindowHandle(outputWindow);
+            if (outputWindow == IntPtr.Zero)
             {
                 return false;
             }
@@ -962,18 +972,10 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
-            if (!_directX12Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            if (!IsWindow(outputWindow))
-            {
-                return false;
-            }
-
-            outputWindow = GetAncestor(outputWindow, GA_ROOT);
-            if (outputWindow == IntPtr.Zero || !IsWindow(outputWindow) || !IsWindowVisible(outputWindow))
+            IntPtr outputWindow = IntPtr.Zero;
+            _directX12Hook.TryGetOutputWindow(swapChain, out outputWindow);
+            outputWindow = ResolveDxgiWindowHandle(outputWindow);
+            if (outputWindow == IntPtr.Zero)
             {
                 return false;
             }
