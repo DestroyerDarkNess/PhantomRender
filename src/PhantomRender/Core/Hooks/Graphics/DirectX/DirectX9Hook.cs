@@ -47,6 +47,15 @@ namespace PhantomRender.Core.Hooks.Graphics
         private PresentDelegate _originalPresent;
         private ResetDelegate _originalReset;
 
+        [ThreadStatic]
+        private static int _endSceneDepth;
+
+        [ThreadStatic]
+        private static int _presentDepth;
+
+        [ThreadStatic]
+        private static int _resetDepth;
+
         public DirectX9Hook(IntPtr deviceAddress, DX9HookFlags flags = DX9HookFlags.Present | DX9HookFlags.Reset)
         {
             _hookEngine = new HookEngine();
@@ -87,56 +96,97 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private int EndSceneHook(IntPtr device)
         {
+            if (_endSceneDepth > 0)
+            {
+                return _originalEndScene(device);
+            }
+
+            _endSceneDepth++;
             try
             {
-                OnEndScene?.Invoke(device);
+                try
+                {
+                    OnEndScene?.Invoke(device);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DX9 EndScene error: {ex.Message}");
+                }
+
+                return _originalEndScene(device);
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"[PhantomRender] DX9 EndScene error: {ex.Message}");
+                _endSceneDepth--;
             }
-            return _originalEndScene(device);
         }
 
         private int PresentHook(IntPtr device, IntPtr sourceRect, IntPtr destRect, IntPtr hDestWindowOverride, IntPtr dirtyRegion)
         {
+            if (_presentDepth > 0)
+            {
+                return _originalPresent(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
+            }
+
+            _presentDepth++;
             try
             {
-                OnPresent?.Invoke(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
+                try
+                {
+                    OnPresent?.Invoke(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DX9 Present error: {ex.Message}");
+                }
+
+                return _originalPresent(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
             }
-            catch (Exception ex)
+            finally
             {
-                Console.WriteLine($"[PhantomRender] DX9 Present error: {ex.Message}");
+                _presentDepth--;
             }
-            return _originalPresent(device, sourceRect, destRect, hDestWindowOverride, dirtyRegion);
         }
 
         private int ResetHook(IntPtr device, ref Direct3D9.D3DPRESENT_PARAMETERS pPresentationParameters)
         {
+            if (_resetDepth > 0)
+            {
+                return _originalReset(device, ref pPresentationParameters);
+            }
+
+            _resetDepth++;
             try
-            {
-                OnBeforeReset?.Invoke(device, pPresentationParameters);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] DX9 Pre-Reset error: {ex.Message}");
-            }
-
-            int result = _originalReset(device, ref pPresentationParameters);
-
-            if (result >= 0) // D3D_OK or success
             {
                 try
                 {
-                    OnAfterReset?.Invoke(device, pPresentationParameters);
+                    OnBeforeReset?.Invoke(device, pPresentationParameters);
                 }
                 catch (Exception ex)
                 {
-                    Console.WriteLine($"[PhantomRender] DX9 Post-Reset error: {ex.Message}");
+                    Console.WriteLine($"[PhantomRender] DX9 Pre-Reset error: {ex.Message}");
                 }
-            }
 
-            return result;
+                int result = _originalReset(device, ref pPresentationParameters);
+
+                if (result >= 0) // D3D_OK or success
+                {
+                    try
+                    {
+                        OnAfterReset?.Invoke(device, pPresentationParameters);
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine($"[PhantomRender] DX9 Post-Reset error: {ex.Message}");
+                    }
+                }
+
+                return result;
+            }
+            finally
+            {
+                _resetDepth--;
+            }
         }
 
         public void Dispose()

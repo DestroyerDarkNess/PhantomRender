@@ -14,9 +14,8 @@ namespace PhantomRender.Core.Hooks.Graphics.OpenGL
         private HookEngine _hookEngine;
         private wglSwapBuffersDelegate _originalSwapBuffers;
 
-        [DllImport("gdi32.dll", EntryPoint = "SwapBuffers", SetLastError = true)]
-        [return: MarshalAs(UnmanagedType.Bool)]
-        private static extern bool GdiSwapBuffers(IntPtr hdc);
+        [ThreadStatic]
+        private static int _swapBuffersDepth;
 
         public OpenGLHook()
         {
@@ -37,16 +36,29 @@ namespace PhantomRender.Core.Hooks.Graphics.OpenGL
 
         private int SwapBuffersHook(IntPtr hdc)
         {
-            try
+            if (_swapBuffersDepth > 0)
             {
-                OnSwapBuffers?.Invoke(hdc);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] OpenGL SwapBuffers error: {ex.Message}");
+                return _originalSwapBuffers(hdc);
             }
 
-            return _originalSwapBuffers(hdc);
+            _swapBuffersDepth++;
+            try
+            {
+                try
+                {
+                    OnSwapBuffers?.Invoke(hdc);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] OpenGL SwapBuffers error: {ex.Message}");
+                }
+
+                return _originalSwapBuffers(hdc);
+            }
+            finally
+            {
+                _swapBuffersDepth--;
+            }
         }
 
         public void Dispose()

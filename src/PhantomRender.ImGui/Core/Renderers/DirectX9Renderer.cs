@@ -15,162 +15,190 @@ namespace PhantomRender.ImGui.Core.Renderers
 
     public sealed unsafe class DirectX9Renderer : RendererBase
     {
+        private readonly object _sync = new object();
+        private readonly Action _backendNewFrameAction;
+        private readonly Action _backendRenderAction;
         private bool _frameStarted;
         private IDirect3DDevice9Ptr _device;
 
         public DirectX9Renderer()
             : base(GraphicsApi.DirectX9)
         {
+            _backendNewFrameAction = BackendNewFrame;
+            _backendRenderAction = BackendRender;
         }
 
         public DirectX9InitializationEndpoint InitializationEndpoint { get; set; } = DirectX9InitializationEndpoint.Present;
 
         public override bool Initialize(nint device, nint windowHandle)
         {
-            if (IsInitialized)
+            lock (_sync)
             {
-                return true;
-            }
-
-            if (device == IntPtr.Zero)
-            {
-                return false;
-            }
-
-            try
-            {
-                RaiseRendererInitializing(device, windowHandle);
-                InitializeImGui(windowHandle);
-
-                _device = new IDirect3DDevice9Ptr((IDirect3DDevice9*)device);
-
-                ImGuiImplD3D9.SetCurrentContext(Context);
-                if (!ImGuiImplD3D9.Init(_device))
+                if (IsInitialized)
                 {
-                    _device = default;
-                    ShutdownImGui();
+                    return true;
+                }
+
+                if (device == IntPtr.Zero)
+                {
                     return false;
                 }
 
-                IsInitialized = true;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX9.Initialize", ex);
-                _device = default;
-
                 try
                 {
-                    ShutdownImGui();
-                }
-                catch
-                {
-                }
+                    RaiseRendererInitializing(device, windowHandle);
+                    InitializeImGui(windowHandle);
 
-                return false;
+                    _device = new IDirect3DDevice9Ptr((IDirect3DDevice9*)device);
+
+                    ImGuiImplD3D9.SetCurrentContext(Context);
+                    if (!ImGuiImplD3D9.Init(_device))
+                    {
+                        _device = default;
+                        ShutdownImGui();
+                        return false;
+                    }
+
+                    IsInitialized = true;
+                    return true;
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX9.Initialize", ex);
+                    _device = default;
+
+                    try
+                    {
+                        ShutdownImGui();
+                    }
+                    catch
+                    {
+                    }
+
+                    return false;
+                }
             }
         }
 
         public override void NewFrame()
         {
-            if (!IsInitialized || _frameStarted)
+            lock (_sync)
             {
-                return;
-            }
-
-            try
-            {
-                BeginFrameCore(() =>
+                if (!IsInitialized || _frameStarted || Context.IsNull)
                 {
-                    ImGuiImplD3D9.SetCurrentContext(Context);
-                    ImGuiImplD3D9.NewFrame();
-                    ImGuiImplWin32.SetCurrentContext(Context);
-                    ImGuiImplWin32.NewFrame();
-                });
+                    return;
+                }
 
-                _frameStarted = true;
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX9.NewFrame", ex);
+                try
+                {
+                    BeginFrameCore(_backendNewFrameAction);
+                    _frameStarted = true;
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX9.NewFrame", ex);
+                }
             }
         }
 
         public override void Render()
         {
-            if (!IsInitialized || !_frameStarted)
+            lock (_sync)
             {
-                return;
-            }
-
-            try
-            {
-                RenderFrameCore(() =>
+                if (!IsInitialized || !_frameStarted || Context.IsNull)
                 {
-                    ImGuiImplD3D9.SetCurrentContext(Context);
-                    ImGuiImplD3D9.RenderDrawData(HexaImGui.GetDrawData());
-                });
-            }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX9.Render", ex);
-            }
-            finally
-            {
-                _frameStarted = false;
+                    return;
+                }
+
+                try
+                {
+                    RenderFrameCore(_backendRenderAction);
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX9.Render", ex);
+                }
+                finally
+                {
+                    _frameStarted = false;
+                }
             }
         }
 
         public override void OnLostDevice()
         {
-            if (!IsInitialized)
+            lock (_sync)
             {
-                return;
-            }
+                if (!IsInitialized)
+                {
+                    return;
+                }
 
-            ImGuiImplD3D9.SetCurrentContext(Context);
-            ImGuiImplD3D9.InvalidateDeviceObjects();
+                _frameStarted = false;
+                ImGuiImplD3D9.SetCurrentContext(Context);
+                ImGuiImplD3D9.InvalidateDeviceObjects();
+            }
         }
 
         public override void OnResetDevice()
         {
-            if (!IsInitialized)
+            lock (_sync)
             {
-                return;
-            }
+                if (!IsInitialized)
+                {
+                    return;
+                }
 
-            ImGuiImplD3D9.SetCurrentContext(Context);
-            ImGuiImplD3D9.CreateDeviceObjects();
+                _frameStarted = false;
+                ImGuiImplD3D9.SetCurrentContext(Context);
+                ImGuiImplD3D9.CreateDeviceObjects();
+            }
         }
 
         public override void Dispose()
         {
-            if (!IsInitialized)
+            lock (_sync)
             {
-                return;
-            }
-
-            try
-            {
-                if (!Context.IsNull)
+                if (!IsInitialized)
                 {
-                    ImGuiImplD3D9.SetCurrentContext(Context);
+                    return;
                 }
 
-                ImGuiImplD3D9.Shutdown();
+                try
+                {
+                    if (!Context.IsNull)
+                    {
+                        ImGuiImplD3D9.SetCurrentContext(Context);
+                    }
+
+                    ImGuiImplD3D9.Shutdown();
+                }
+                catch (Exception ex)
+                {
+                    ReportRuntimeError("DirectX9.Dispose", ex);
+                }
+                finally
+                {
+                    ShutdownImGui();
+                    _device = default;
+                    _frameStarted = false;
+                    IsInitialized = false;
+                }
             }
-            catch (Exception ex)
-            {
-                ReportRuntimeError("DirectX9.Dispose", ex);
-            }
-            finally
-            {
-                ShutdownImGui();
-                _device = default;
-                _frameStarted = false;
-                IsInitialized = false;
-            }
+        }
+
+        private void BackendNewFrame()
+        {
+            ImGuiImplD3D9.SetCurrentContext(Context);
+            ImGuiImplD3D9.NewFrame();
+            ImGuiImplWin32.SetCurrentContext(Context);
+            ImGuiImplWin32.NewFrame();
+        }
+
+        private void BackendRender()
+        {
+            ImGuiImplD3D9.SetCurrentContext(Context);
+            ImGuiImplD3D9.RenderDrawData(HexaImGui.GetDrawData());
         }
     }
 }
