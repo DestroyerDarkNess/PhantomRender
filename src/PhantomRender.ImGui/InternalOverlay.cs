@@ -19,8 +19,12 @@ namespace PhantomRender.ImGui
         private OpenGLHook _openGLHook;
         private IntPtr _directX11SwapChainHandle;
         private IntPtr _directX11WindowHandle;
+        private int _directX11PresentThreadId;
+        private bool _directX11LoggedThreadMismatch;
         private IntPtr _directX12SwapChainHandle;
         private IntPtr _directX12WindowHandle;
+        private int _directX12PresentThreadId;
+        private bool _directX12LoggedThreadMismatch;
         private int _shutdownRequested;
         private bool _disposed;
 
@@ -205,6 +209,8 @@ namespace PhantomRender.ImGui
 
             _directX11SwapChainHandle = IntPtr.Zero;
             _directX11WindowHandle = IntPtr.Zero;
+            _directX11PresentThreadId = 0;
+            _directX11LoggedThreadMismatch = false;
             _directX11Hook.OnPresent += HandleDirectX11Present;
 
             if (EnableDirectX11ResizeBuffersHook)
@@ -228,6 +234,8 @@ namespace PhantomRender.ImGui
             }
 
             _directX12Hook = new DirectX12Hook(swapChainAddress);
+            _directX12PresentThreadId = 0;
+            _directX12LoggedThreadMismatch = false;
             _directX12Hook.OnPresent += HandleDirectX12Present;
             _directX12Hook.OnResizeBuffers += HandleDirectX12ResizeBuffers;
             _directX12Hook.Enable();
@@ -440,9 +448,32 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
+            int currentThreadId = GetCurrentThreadId();
             if (_directX11SwapChainHandle != IntPtr.Zero)
             {
-                return swapChain == _directX11SwapChainHandle;
+                if (swapChain != _directX11SwapChainHandle)
+                {
+                    return false;
+                }
+
+                if (_directX11PresentThreadId == 0)
+                {
+                    _directX11PresentThreadId = currentThreadId;
+                    return true;
+                }
+
+                if (currentThreadId == _directX11PresentThreadId)
+                {
+                    return true;
+                }
+
+                if (!_directX11LoggedThreadMismatch)
+                {
+                    _directX11LoggedThreadMismatch = true;
+                    Console.WriteLine($"[PhantomRender] DX11: ignoring Present from thread {currentThreadId}, owner thread is {_directX11PresentThreadId}.");
+                }
+
+                return false;
             }
 
             if (!_directX11Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
@@ -469,6 +500,8 @@ namespace PhantomRender.ImGui
 
             _directX11SwapChainHandle = swapChain;
             _directX11WindowHandle = outputWindow;
+            _directX11PresentThreadId = currentThreadId;
+            _directX11LoggedThreadMismatch = false;
             return true;
         }
 
@@ -479,9 +512,32 @@ namespace PhantomRender.ImGui
                 return false;
             }
 
+            int currentThreadId = GetCurrentThreadId();
             if (_directX12SwapChainHandle != IntPtr.Zero)
             {
-                return swapChain == _directX12SwapChainHandle;
+                if (swapChain != _directX12SwapChainHandle)
+                {
+                    return false;
+                }
+
+                if (_directX12PresentThreadId == 0)
+                {
+                    _directX12PresentThreadId = currentThreadId;
+                    return true;
+                }
+
+                if (currentThreadId == _directX12PresentThreadId)
+                {
+                    return true;
+                }
+
+                if (!_directX12LoggedThreadMismatch)
+                {
+                    _directX12LoggedThreadMismatch = true;
+                    Console.WriteLine($"[PhantomRender] DX12: ignoring Present from thread {currentThreadId}, owner thread is {_directX12PresentThreadId}.");
+                }
+
+                return false;
             }
 
             if (!_directX12Hook.TryGetOutputWindow(swapChain, out IntPtr outputWindow) || outputWindow == IntPtr.Zero)
@@ -508,6 +564,8 @@ namespace PhantomRender.ImGui
 
             _directX12SwapChainHandle = swapChain;
             _directX12WindowHandle = outputWindow;
+            _directX12PresentThreadId = currentThreadId;
+            _directX12LoggedThreadMismatch = false;
             return true;
         }
 
@@ -615,6 +673,8 @@ namespace PhantomRender.ImGui
                 _directX11Hook = null;
                 _directX11SwapChainHandle = IntPtr.Zero;
                 _directX11WindowHandle = IntPtr.Zero;
+                _directX11PresentThreadId = 0;
+                _directX11LoggedThreadMismatch = false;
             }
 
             if (_directX12Hook != null)
@@ -633,6 +693,8 @@ namespace PhantomRender.ImGui
                 _directX12Hook = null;
                 _directX12SwapChainHandle = IntPtr.Zero;
                 _directX12WindowHandle = IntPtr.Zero;
+                _directX12PresentThreadId = 0;
+                _directX12LoggedThreadMismatch = false;
             }
 
             if (_openGLHook != null)
@@ -675,6 +737,9 @@ namespace PhantomRender.ImGui
 
         [DllImport("user32.dll")]
         private static extern IntPtr GetForegroundWindow();
+
+        [DllImport("kernel32.dll")]
+        private static extern int GetCurrentThreadId();
 
         private const uint GA_ROOT = 2;
     }

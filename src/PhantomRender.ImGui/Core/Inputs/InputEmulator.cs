@@ -27,6 +27,8 @@ namespace PhantomRender.ImGui.Core.Inputs
         private static extern short GetAsyncKeyState(int vKey);
 
         private readonly ImGuiIOPtr _io;
+        private readonly byte[] _keyboardStateBuffer = new byte[256];
+        private readonly StringBuilder _unicodeBuffer = new StringBuilder(2);
         private readonly Dictionary<ImGuiKey, DateTime> _keyLastPressed = new Dictionary<ImGuiKey, DateTime>();
         private readonly Dictionary<Keys, Action> _singleKeyEvents = new Dictionary<Keys, Action>();
         private readonly Dictionary<Keys, DateTime> _singleKeyLastTriggered = new Dictionary<Keys, DateTime>();
@@ -189,18 +191,16 @@ namespace PhantomRender.ImGui.Core.Inputs
 
         protected virtual char ConvertKeyToChar(Keys key)
         {
-            StringBuilder output = new StringBuilder(2);
-            byte[] keyboardState = new byte[256];
-
-            if (!GetKeyboardState(keyboardState))
+            if (!GetKeyboardState(_keyboardStateBuffer))
             {
                 return '\0';
             }
 
+            _unicodeBuffer.Clear();
             uint virtualKey = (uint)key;
             uint scanCode = MapVirtualKey(virtualKey, 0);
-            int result = ToUnicode(virtualKey, scanCode, keyboardState, output, output.Capacity, 0);
-            return result > 0 ? output[0] : '\0';
+            int result = ToUnicode(virtualKey, scanCode, _keyboardStateBuffer, _unicodeBuffer, _unicodeBuffer.Capacity, 0);
+            return result > 0 ? _unicodeBuffer[0] : '\0';
         }
 
         protected virtual void UpdateModifierKey(ImGuiKey imguiKey, Keys virtualKey)
