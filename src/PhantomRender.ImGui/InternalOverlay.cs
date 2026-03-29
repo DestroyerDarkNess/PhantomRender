@@ -5,6 +5,7 @@ using System.Threading;
 using PhantomRender.Core;
 using PhantomRender.Core.Hooks.Graphics;
 using PhantomRender.Core.Hooks.Graphics.OpenGL;
+using PhantomRender.Core.Hooks.Graphics.Vulkan;
 using PhantomRender.ImGui.Core;
 using PhantomRender.ImGui.Core.Renderers;
 
@@ -17,6 +18,7 @@ namespace PhantomRender.ImGui
         private DirectX11Hook _directX11Hook;
         private DirectX12Hook _directX12Hook;
         private OpenGLHook _openGLHook;
+        private VulkanHook _vulkanHook;
         private IntPtr _directX9DeviceHandle;
         private IntPtr _directX9WindowHandle;
         private int _directX9PresentThreadId;
@@ -38,6 +40,11 @@ namespace PhantomRender.ImGui
         private IntPtr _directX12WindowHandle;
         private int _directX12PresentThreadId;
         private bool _directX12LoggedThreadMismatch;
+        private IntPtr _vulkanDeviceHandle;
+        private IntPtr _vulkanSwapchainHandle;
+        private IntPtr _vulkanWindowHandle;
+        private int _vulkanPresentThreadId;
+        private bool _vulkanLoggedThreadMismatch;
         private int _shutdownRequested;
         private bool _disposed;
 
@@ -89,6 +96,7 @@ namespace PhantomRender.ImGui
                 GraphicsApi.DirectX11 => StartDirectX11(),
                 GraphicsApi.DirectX12 => StartDirectX12(),
                 GraphicsApi.OpenGL => StartOpenGL(),
+                GraphicsApi.Vulkan => StartVulkan(),
                 _ => throw new NotSupportedException($"{Renderer.GraphicsApi.ToDisplayName()} does not have an internal overlay host."),
             };
 
@@ -268,6 +276,24 @@ namespace PhantomRender.ImGui
             return true;
         }
 
+        private bool StartVulkan()
+        {
+            if (!(Renderer is IVulkanOverlayRenderer))
+            {
+                throw new InvalidOperationException("Vulkan internal overlay requires a Vulkan renderer.");
+            }
+
+            _vulkanHook = new VulkanHook();
+            _vulkanDeviceHandle = IntPtr.Zero;
+            _vulkanSwapchainHandle = IntPtr.Zero;
+            _vulkanWindowHandle = IntPtr.Zero;
+            _vulkanPresentThreadId = 0;
+            _vulkanLoggedThreadMismatch = false;
+            _vulkanHook.OnPresent += HandleVulkanPresent;
+            _vulkanHook.Enable();
+            return true;
+        }
+
         private static DX9HookFlags GetDirectX9HookFlags(DirectX9Renderer renderer)
         {
             return renderer.InitializationEndpoint == DirectX9InitializationEndpoint.EndScene
@@ -374,6 +400,45 @@ namespace PhantomRender.ImGui
 
             BeginFrame();
             RenderFrame();
+        }
+
+        private unsafe void HandleVulkanPresent(ref VulkanPresentHookArgs hookArgs)
+        {
+            if (ShutdownRequested ||
+                _vulkanHook == null ||
+                !(Renderer is IVulkanOverlayRenderer vulkanRenderer))
+            {
+                return;
+            }
+
+            if (!_vulkanHook.TryGetPresentContext(hookArgs.Queue, hookArgs.PresentInfo, _vulkanSwapchainHandle, out VulkanPresentContext context))
+            {
+                return;
+            }
+
+            if (context.WindowHandle == IntPtr.Zero)
+            {
+                context.WindowHandle = ResolveWindowHandle();
+            }
+
+            if (!TryAcceptVulkanPresentTarget(context))
+            {
+                return;
+            }
+
+            context.WindowHandle = _vulkanWindowHandle != IntPtr.Zero ? _vulkanWindowHandle : context.WindowHandle;
+            if (context.WindowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            if (!vulkanRenderer.Initialize(context))
+            {
+                return;
+            }
+
+            vulkanRenderer.NewFrame();
+            vulkanRenderer.Render(context, ref hookArgs);
         }
 
         private void HandleDirectX10Present(IntPtr swapChain, uint syncInterval, uint flags)
@@ -710,6 +775,75 @@ namespace PhantomRender.ImGui
             return true;
         }
 
+        private bool TryAcceptVulkanPresentTarget(VulkanPresentContext context)
+        {
+            if (context.Device == IntPtr.Zero || context.Swapchain == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            IntPtr windowHandle = context.WindowHandle;
+            if (windowHandle == IntPtr.Zero)
+            {
+                windowHandle = ResolveWindowHandle();
+            }
+
+            if (windowHandle == IntPtr.Zero)
+            {
+                return false;
+            }
+
+            int currentThreadId = GetCurrentThreadId();
+            IntPtr rootWindow = GetAncestor(windowHandle, GA_ROOT);
+            if (rootWindow == IntPtr.Zero)
+            {
+                rootWindow = windowHandle;
+            }
+
+            if (!IsWindow(rootWindow) || !IsWindowVisible(rootWindow))
+            {
+                return false;
+            }
+
+            IntPtr preferredWindow = ResolveWindowHandle();
+            if (preferredWindow != IntPtr.Zero && rootWindow != preferredWindow)
+            {
+                return false;
+            }
+
+            if (_vulkanSwapchainHandle != IntPtr.Zero)
+            {
+                if (_vulkanPresentThreadId != 0 && currentThreadId != _vulkanPresentThreadId)
+                {
+                    if (!_vulkanLoggedThreadMismatch)
+                    {
+                        _vulkanLoggedThreadMismatch = true;
+                        Console.WriteLine($"[PhantomRender] Vulkan: ignoring Present from thread {currentThreadId}, owner thread is {_vulkanPresentThreadId}.");
+                    }
+
+                    return false;
+                }
+
+                bool targetChanged =
+                    context.Device != _vulkanDeviceHandle ||
+                    context.Swapchain != _vulkanSwapchainHandle ||
+                    rootWindow != _vulkanWindowHandle;
+
+                if (targetChanged && Renderer.IsInitialized)
+                {
+                    Console.WriteLine($"[PhantomRender] Vulkan: swap target changed (device=0x{context.Device.ToInt64():X}, swapchain=0x{context.Swapchain.ToInt64():X}), reinitializing renderer.");
+                    Renderer.Dispose();
+                }
+            }
+
+            _vulkanDeviceHandle = context.Device;
+            _vulkanSwapchainHandle = context.Swapchain;
+            _vulkanWindowHandle = rootWindow;
+            _vulkanPresentThreadId = currentThreadId;
+            _vulkanLoggedThreadMismatch = false;
+            return true;
+        }
+
         private void ResetOpenGLRendererForTargetChange(IntPtr windowHandle, IntPtr hdc, IntPtr renderingContext)
         {
             if (Renderer.IsInitialized)
@@ -1011,6 +1145,26 @@ namespace PhantomRender.ImGui
                 _openGLWindowHandle = IntPtr.Zero;
                 _openGLPresentThreadId = 0;
                 _openGLLoggedThreadMismatch = false;
+            }
+
+            if (_vulkanHook != null)
+            {
+                _vulkanHook.OnPresent -= HandleVulkanPresent;
+
+                try
+                {
+                    _vulkanHook.Dispose();
+                }
+                catch
+                {
+                }
+
+                _vulkanHook = null;
+                _vulkanDeviceHandle = IntPtr.Zero;
+                _vulkanSwapchainHandle = IntPtr.Zero;
+                _vulkanWindowHandle = IntPtr.Zero;
+                _vulkanPresentThreadId = 0;
+                _vulkanLoggedThreadMismatch = false;
             }
         }
 

@@ -134,6 +134,12 @@ namespace PhantomRender.ImGui.Native
             Stopwatch stopwatch = Stopwatch.StartNew();
             while (stopwatch.Elapsed < timeout && !IsShutdownRequested())
             {
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.Vulkan))
+                {
+                    Log($"Graphics API detection hit Vulkan after {stopwatch.ElapsedMilliseconds}ms.");
+                    return GraphicsApi.Vulkan;
+                }
+
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
                 {
                     Log($"Graphics API detection hit DX9 after {stopwatch.ElapsedMilliseconds}ms.");
@@ -188,6 +194,9 @@ namespace PhantomRender.ImGui.Native
 
                 case GraphicsApi.OpenGL:
                     return new OpenGLRenderer();
+
+                case GraphicsApi.Vulkan:
+                    return new VulkanRenderer();
 
                 default:
                     throw new NotSupportedException($"{graphicsApi.ToDisplayName()} does not have an internal native host.");

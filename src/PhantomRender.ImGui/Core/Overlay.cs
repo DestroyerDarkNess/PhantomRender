@@ -92,6 +92,9 @@ namespace PhantomRender.ImGui.Core
                 case GraphicsApi.OpenGL:
                     return new OpenGLRenderer();
 
+                case GraphicsApi.Vulkan:
+                    return new VulkanRenderer();
+
                 default:
                     throw new NotSupportedException($"{graphicsApi.ToDisplayName()} does not have an ImGui renderer yet.");
             }

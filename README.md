@@ -37,6 +37,7 @@ PhantomRender is an injected ImGui overlay host for Windows titles that use:
 - DirectX 11
 - DirectX 12
 - OpenGL
+- Vulkan
 
 The current codebase is focused on a clean internal overlay path:
 
@@ -52,7 +53,7 @@ The current codebase is focused on a clean internal overlay path:
 | Project | Description |
 |---|---|
 | `src/PhantomRender` | Core hooks and low-level graphics/input interop. |
-| `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL. |
+| `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL/Vulkan. |
 | `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, logging, and default sample UI. |
 
 ## Features
@@ -61,8 +62,10 @@ The current codebase is focused on a clean internal overlay path:
 - DXGI-based hook path for DX10, DX11, and DX12.
 - DX9 `Present` and `EndScene` support.
 - OpenGL `wglSwapBuffers` hook path.
+- Vulkan `vkQueuePresentKHR` hook path with tracked instance/device/queue/swapchain lifecycle.
 - Owner-thread pinning for render callbacks to avoid unstable cross-thread entry into the runtime.
 - DXGI resize recovery and OpenGL target/context reinitialization on display changes.
+- Vulkan swapchain target reinitialization when device/swapchain/window changes.
 - Reduced per-frame delegate/allocation churn across render backends.
 - Built-in sample UI with `Insert` toggle and `Delete` shutdown hotkeys.
 - Persistent file logging for injected sessions.
@@ -76,7 +79,7 @@ The current codebase is focused on a clean internal overlay path:
 | DirectX 11 | Supported | Stable resize path and owner-thread filtering. |
 | DirectX 12 | Supported | Queue capture + minimal ImGui command path; still validate per title. |
 | OpenGL | Supported | `wglSwapBuffers` hook path with target/context reinit on change. |
-| Vulkan | Not implemented | Out of scope for the current release. |
+| Vulkan | Supported | `vkQueuePresentKHR` hook path with tracked queue/swapchain lifecycle; validate per title. |
 
 ## Build And Publish
 
@@ -147,6 +150,7 @@ The log includes:
 - hook activation
 - renderer initialization
 - resize/reset/context change events
+- Vulkan late-injection and unsupported-path diagnostics
 - runtime errors and exceptions
 
 ## Known Issues
@@ -155,8 +159,8 @@ See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).
 
 ## Future Work
 
-- Add Vulkan support.
 - Expand compatibility coverage across more tested titles.
+- Improve Vulkan fallback coverage for late injection and split present/graphics queue setups.
 - Add dedicated samples for custom overlay UIs and integrations.
 
 ## License
