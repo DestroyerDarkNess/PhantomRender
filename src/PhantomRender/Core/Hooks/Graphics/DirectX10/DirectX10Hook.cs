@@ -39,6 +39,9 @@ namespace PhantomRender.Core.Hooks.Graphics
         [ThreadStatic]
         private static int _presentHookDepth;
 
+        [ThreadStatic]
+        private static int _resizeHookDepth;
+
         public DirectX10Hook(IntPtr swapChainAddress)
         {
             _hookEngine = new HookEngine();
@@ -155,27 +158,40 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         private int ResizeBuffersHook(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags)
         {
+            if (_resizeHookDepth > 0)
+            {
+                return _originalResizeBuffers(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
+            }
+
+            _resizeHookDepth++;
             try
             {
-                OnBeforeResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] DXGI Before ResizeBuffers error: {ex.Message}");
-            }
+                try
+                {
+                    OnBeforeResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DXGI Before ResizeBuffers error: {ex.Message}");
+                }
 
-            int hr = _originalResizeBuffers(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
+                int hr = _originalResizeBuffers(swapChain, bufferCount, width, height, newFormat, swapChainFlags);
 
-            try
-            {
-                OnAfterResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags, hr);
-            }
-            catch (Exception ex)
-            {
-                Console.WriteLine($"[PhantomRender] DXGI After ResizeBuffers error: {ex.Message}");
-            }
+                try
+                {
+                    OnAfterResizeBuffers?.Invoke(swapChain, bufferCount, width, height, newFormat, swapChainFlags, hr);
+                }
+                catch (Exception ex)
+                {
+                    Console.WriteLine($"[PhantomRender] DXGI After ResizeBuffers error: {ex.Message}");
+                }
 
-            return hr;
+                return hr;
+            }
+            finally
+            {
+                _resizeHookDepth--;
+            }
         }
 
         public void Dispose()

@@ -134,6 +134,18 @@ namespace PhantomRender.ImGui.Native
             Stopwatch stopwatch = Stopwatch.StartNew();
             while (stopwatch.Elapsed < timeout && !IsShutdownRequested())
             {
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
+                {
+                    Log($"Graphics API detection hit DX9 after {stopwatch.ElapsedMilliseconds}ms.");
+                    return GraphicsApi.DirectX9;
+                }
+
+                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
+                {
+                    Log($"Graphics API detection hit OpenGL after {stopwatch.ElapsedMilliseconds}ms.");
+                    return GraphicsApi.OpenGL;
+                }
+
                 if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX12))
                 {
                     Log($"Graphics API detection hit DX12 after {stopwatch.ElapsedMilliseconds}ms.");
@@ -150,18 +162,6 @@ namespace PhantomRender.ImGui.Native
                 {
                     Log($"Graphics API detection hit DX10 after {stopwatch.ElapsedMilliseconds}ms.");
                     return GraphicsApi.DirectX10;
-                }
-
-                if (GraphicsApiDetector.IsLoaded(GraphicsApi.DirectX9))
-                {
-                    Log($"Graphics API detection hit DX9 after {stopwatch.ElapsedMilliseconds}ms.");
-                    return GraphicsApi.DirectX9;
-                }
-
-                if (GraphicsApiDetector.IsLoaded(GraphicsApi.OpenGL))
-                {
-                    Log($"Graphics API detection hit OpenGL after {stopwatch.ElapsedMilliseconds}ms.");
-                    return GraphicsApi.OpenGL;
                 }
 
                 Thread.Sleep(100);
