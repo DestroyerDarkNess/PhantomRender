@@ -200,6 +200,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             lock (_sync)
             {
                 base.OnBeforeResizeBuffers(swapChain);
+                FrameStarted = false;
                 ReleaseRenderTarget();
             }
         }
@@ -209,6 +210,7 @@ namespace PhantomRender.ImGui.Core.Renderers
             lock (_sync)
             {
                 base.OnAfterResizeBuffers(swapChain);
+                FrameStarted = false;
                 if (swapChain != IntPtr.Zero)
                 {
                     SwapChainHandle = swapChain;

@@ -51,7 +51,7 @@ namespace PhantomRender.ImGui
 
         public DX9HookFlags? DirectX9HookFlagsOverride { get; set; }
 
-        public bool EnableDirectX11ResizeBuffersHook { get; set; }
+        public bool EnableDirectX11ResizeBuffersHook { get; set; } = true;
 
         public Func<IntPtr> WindowHandleResolver { get; set; }
 
@@ -389,6 +389,11 @@ namespace PhantomRender.ImGui
                 return;
             }
 
+            if (_directX11SwapChainHandle != IntPtr.Zero && swapChain != _directX11SwapChainHandle)
+            {
+                return;
+            }
+
             if (Renderer is IDxgiOverlayRenderer dxgiRenderer)
             {
                 dxgiRenderer.OnBeforeResizeBuffers(swapChain);
@@ -398,6 +403,11 @@ namespace PhantomRender.ImGui
         private void HandleDirectX11AfterResizeBuffers(IntPtr swapChain, uint bufferCount, uint width, uint height, int newFormat, uint swapChainFlags, int hr)
         {
             if (ShutdownRequested || hr < 0)
+            {
+                return;
+            }
+
+            if (_directX11SwapChainHandle != IntPtr.Zero && swapChain != _directX11SwapChainHandle)
             {
                 return;
             }
