@@ -23,6 +23,16 @@ namespace PhantomRender.Core
                 return GraphicsApi.Vulkan;
             }
 
+            if (IsLoaded(GraphicsApi.DirectX9))
+            {
+                return GraphicsApi.DirectX9;
+            }
+
+            if (IsLoaded(GraphicsApi.OpenGL))
+            {
+                return GraphicsApi.OpenGL;
+            }
+
             if (IsLoaded(GraphicsApi.DirectX12))
             {
                 return GraphicsApi.DirectX12;
@@ -36,16 +46,6 @@ namespace PhantomRender.Core
             if (IsLoaded(GraphicsApi.DirectX10))
             {
                 return GraphicsApi.DirectX10;
-            }
-
-            if (IsLoaded(GraphicsApi.DirectX9))
-            {
-                return GraphicsApi.DirectX9;
-            }
-
-            if (IsLoaded(GraphicsApi.OpenGL))
-            {
-                return GraphicsApi.OpenGL;
             }
 
             return GraphicsApi.Unknown;
