@@ -162,14 +162,14 @@ namespace PhantomRender.ImGui
             var renderer = Renderer as DirectX9Renderer
                 ?? throw new InvalidOperationException("DirectX9 internal overlay requires a DirectX9Renderer.");
 
-            IntPtr deviceAddress = DirectX9Hook.GetDeviceAddress();
+            IntPtr deviceAddress = DirectX9Hook.GetDeviceAddress(out bool isExDevice);
             if (deviceAddress == IntPtr.Zero)
             {
                 return false;
             }
 
             DX9HookFlags flags = DirectX9HookFlagsOverride ?? GetDirectX9HookFlags(renderer);
-            _directX9Hook = new DirectX9Hook(deviceAddress, flags);
+            _directX9Hook = new DirectX9Hook(deviceAddress, flags, isExDevice);
             _directX9DeviceHandle = IntPtr.Zero;
             _directX9WindowHandle = IntPtr.Zero;
             _directX9PresentThreadId = 0;
