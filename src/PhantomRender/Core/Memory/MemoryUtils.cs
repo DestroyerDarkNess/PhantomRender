@@ -35,6 +35,18 @@ namespace PhantomRender.Core.Memory
         }
 
         /// <summary>
+        /// Writes a pointer to protected memory, handling page protection automatically.
+        /// </summary>
+        public static void WriteProtectedIntPtr(IntPtr address, IntPtr value)
+        {
+            byte[] data = IntPtr.Size == 8
+                ? BitConverter.GetBytes(value.ToInt64())
+                : BitConverter.GetBytes(value.ToInt32());
+
+            WriteProtected(address, data);
+        }
+
+        /// <summary>
         /// Temporarily changes memory protection to allow writing.
         /// </summary>
         public static void WriteProtected(IntPtr address, byte[] data)

@@ -40,6 +40,11 @@ namespace PhantomRender.Core.Hooks.Graphics
         private readonly Present1Delegate _originalPresent1;
         private readonly ResizeBuffersDelegate _originalResizeBuffers;
         private readonly bool _hookResizeBuffers;
+        private readonly bool _unityCompatibilityMode;
+        private readonly IntPtr _unityPresentSlotAddress;
+        private readonly IntPtr _unityPresentOriginalAddress;
+        private readonly PresentDelegate _unityPresentDetourCallback;
+        private bool _unityPresentHookInstalled;
 
         [ThreadStatic]
         private static int _presentDepth;
@@ -54,15 +59,28 @@ namespace PhantomRender.Core.Hooks.Graphics
                 throw new ArgumentOutOfRangeException(nameof(swapChainAddress));
             }
 
-            _hookEngine = new HookEngine();
+            _unityCompatibilityMode = IsUnityProcess();
+            _hookEngine = _unityCompatibilityMode ? null : new HookEngine();
 
             IntPtr vTable = MemoryUtils.ReadIntPtr(swapChainAddress);
-            IntPtr presentAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_PRESENT * IntPtr.Size);
+            IntPtr presentSlotAddress = vTable + VTABLE_PRESENT * IntPtr.Size;
+            IntPtr presentAddress = MemoryUtils.ReadIntPtr(presentSlotAddress);
+
+            if (_unityCompatibilityMode)
+            {
+                _unityPresentSlotAddress = presentSlotAddress;
+                _unityPresentOriginalAddress = presentAddress;
+                _unityPresentDetourCallback = new PresentDelegate(PresentHook);
+                _originalPresent = Marshal.GetDelegateForFunctionPointer<PresentDelegate>(presentAddress);
+                _hookResizeBuffers = false;
+                _originalPresent1 = null;
+                return;
+            }
 
             _originalPresent = _hookEngine.CreateHook<PresentDelegate>(presentAddress, PresentHook);
             _hookResizeBuffers = hookResizeBuffers;
 
-            if (hookResizeBuffers)
+            if (_hookResizeBuffers)
             {
                 IntPtr resizeBuffersAddress = MemoryUtils.ReadIntPtr(vTable + VTABLE_RESIZE_BUFFERS * IntPtr.Size);
                 _originalResizeBuffers = _hookEngine.CreateHook<ResizeBuffersDelegate>(resizeBuffersAddress, ResizeBuffersHook);
@@ -73,18 +91,33 @@ namespace PhantomRender.Core.Hooks.Graphics
 
         public void Enable()
         {
-            _hookEngine.EnableHooks();
+            if (_unityCompatibilityMode)
+            {
+                EnableUnityPresentVTableHook();
+            }
+            else
+            {
+                _hookEngine.EnableHooks();
+            }
+
+            if (_unityCompatibilityMode)
+            {
+                Console.WriteLine("[PhantomRender] DX11 Unity compatibility mode enabled. Present vtable slot hook is active; Present1 and ResizeBuffers hooks are disabled.");
+            }
+
             Console.WriteLine("[PhantomRender] DX11 hooks enabled.");
         }
 
         public void Disable()
         {
-            _hookEngine.DisableHooks();
+            DisableUnityPresentVTableHook();
+            _hookEngine?.DisableHooks();
         }
 
         public void Dispose()
         {
-            _hookEngine.Dispose();
+            DisableUnityPresentVTableHook();
+            _hookEngine?.Dispose();
             GC.SuppressFinalize(this);
         }
 
@@ -345,6 +378,34 @@ namespace PhantomRender.Core.Hooks.Graphics
                 Console.WriteLine($"[PhantomRender] DX11 Present1 hook init failed: {ex}");
                 return null;
             }
+        }
+
+        private static bool IsUnityProcess()
+        {
+            return NativeWindowHelper.GetModuleHandle("UnityPlayer.dll") != IntPtr.Zero;
+        }
+
+        private void EnableUnityPresentVTableHook()
+        {
+            if (_unityPresentHookInstalled || _unityPresentSlotAddress == IntPtr.Zero || _unityPresentOriginalAddress == IntPtr.Zero)
+            {
+                return;
+            }
+
+            IntPtr detourAddress = Marshal.GetFunctionPointerForDelegate(_unityPresentDetourCallback);
+            MemoryUtils.WriteProtectedIntPtr(_unityPresentSlotAddress, detourAddress);
+            _unityPresentHookInstalled = true;
+        }
+
+        private void DisableUnityPresentVTableHook()
+        {
+            if (!_unityPresentHookInstalled || _unityPresentSlotAddress == IntPtr.Zero || _unityPresentOriginalAddress == IntPtr.Zero)
+            {
+                return;
+            }
+
+            MemoryUtils.WriteProtectedIntPtr(_unityPresentSlotAddress, _unityPresentOriginalAddress);
+            _unityPresentHookInstalled = false;
         }
 
         private static IntPtr GetVTableFunctionAddress(IntPtr instance, int index)
