@@ -2,12 +2,18 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using Hexa.NET.ImGui;
 
 namespace PhantomRender.ImGui.Core.Inputs
 {
-    public class InputEmulator
+    public class InputEmulator : IDisposable
     {
+        private const int GWLP_WNDPROC = -4;
+        private const uint WM_MOUSEWHEEL = 0x020A;
+        private const uint WM_MOUSEHWHEEL = 0x020E;
+        private const int WHEEL_DELTA = 120;
+
         [DllImport("user32.dll")]
         private static extern int ToUnicode(
             uint wVirtKey,
@@ -27,6 +33,7 @@ namespace PhantomRender.ImGui.Core.Inputs
         private static extern short GetAsyncKeyState(int vKey);
 
         private readonly ImGuiIOPtr _io;
+        private readonly nint _windowHandle;
         private readonly byte[] _keyboardStateBuffer = new byte[256];
         private readonly StringBuilder _unicodeBuffer = new StringBuilder(2);
         private readonly Dictionary<ImGuiKey, DateTime> _keyLastPressed = new Dictionary<ImGuiKey, DateTime>();
@@ -36,6 +43,11 @@ namespace PhantomRender.ImGui.Core.Inputs
             new Dictionary<HashSet<Keys>, Action>(HashSet<Keys>.CreateSetComparer());
         private readonly Dictionary<HashSet<Keys>, DateTime> _comboKeyLastTriggered =
             new Dictionary<HashSet<Keys>, DateTime>(HashSet<Keys>.CreateSetComparer());
+        private WndProcDelegate _subclassWndProc;
+        private nint _originalWndProc;
+        private int _pendingMouseWheelVertical;
+        private int _pendingMouseWheelHorizontal;
+        private bool _disposed;
 
         public InputEmulator(ImGuiIOPtr io)
             : this(io, IntPtr.Zero)
@@ -45,7 +57,7 @@ namespace PhantomRender.ImGui.Core.Inputs
         public InputEmulator(ImGuiIOPtr io, nint windowHandle)
         {
             _io = io;
-            _ = windowHandle;
+            _windowHandle = windowHandle;
 
             foreach (ImGuiKey key in VirtualKeyToImGuiKeyMap.Values)
             {
@@ -54,6 +66,8 @@ namespace PhantomRender.ImGui.Core.Inputs
                     _keyLastPressed[key] = DateTime.MinValue;
                 }
             }
+
+            TryInstallMouseWheelHook();
         }
 
         public bool Enabled { get; set; } = true;
@@ -77,6 +91,8 @@ namespace PhantomRender.ImGui.Core.Inputs
 
         public void UpdateHotkeysOnly()
         {
+            Interlocked.Exchange(ref _pendingMouseWheelVertical, 0);
+            Interlocked.Exchange(ref _pendingMouseWheelHorizontal, 0);
             ProcessRegisteredHotkeys(DateTime.UtcNow);
         }
 
@@ -120,6 +136,20 @@ namespace PhantomRender.ImGui.Core.Inputs
             _singleKeyLastTriggered.Clear();
             _comboKeyEvents.Clear();
             _comboKeyLastTriggered.Clear();
+        }
+
+        public virtual void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            ClearEvents();
+            Interlocked.Exchange(ref _pendingMouseWheelVertical, 0);
+            Interlocked.Exchange(ref _pendingMouseWheelHorizontal, 0);
+            TryRemoveMouseWheelHook();
         }
 
         public void UpdateKeyboardState()
@@ -176,6 +206,7 @@ namespace PhantomRender.ImGui.Core.Inputs
                 _io.MouseDown[2] = IsKeyDown(Keys.MButton);
                 _io.MouseDown[3] = IsKeyDown(Keys.XButton1);
                 _io.MouseDown[4] = IsKeyDown(Keys.XButton2);
+                FlushPendingMouseWheel();
                 return true;
             }
             catch
@@ -260,6 +291,93 @@ namespace PhantomRender.ImGui.Core.Inputs
                     // User callbacks should not break the input update path.
                 }
             }
+        }
+
+        private void FlushPendingMouseWheel()
+        {
+            int verticalDelta = Interlocked.Exchange(ref _pendingMouseWheelVertical, 0);
+            int horizontalDelta = Interlocked.Exchange(ref _pendingMouseWheelHorizontal, 0);
+            if (verticalDelta == 0 && horizontalDelta == 0)
+            {
+                return;
+            }
+
+            _io.AddMouseWheelEvent(
+                horizontalDelta / (float)WHEEL_DELTA,
+                verticalDelta / (float)WHEEL_DELTA);
+        }
+
+        private void TryInstallMouseWheelHook()
+        {
+            if (_windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                _subclassWndProc = WindowProc;
+                nint newWndProc = Marshal.GetFunctionPointerForDelegate(_subclassWndProc);
+                _originalWndProc = SetWindowLongPtr(_windowHandle, GWLP_WNDPROC, newWndProc);
+                if (_originalWndProc == IntPtr.Zero && Marshal.GetLastWin32Error() != 0)
+                {
+                    _subclassWndProc = null;
+                }
+            }
+            catch
+            {
+                _originalWndProc = IntPtr.Zero;
+                _subclassWndProc = null;
+            }
+        }
+
+        private void TryRemoveMouseWheelHook()
+        {
+            if (_windowHandle == IntPtr.Zero || _originalWndProc == IntPtr.Zero)
+            {
+                return;
+            }
+
+            try
+            {
+                SetWindowLongPtr(_windowHandle, GWLP_WNDPROC, _originalWndProc);
+            }
+            catch
+            {
+            }
+            finally
+            {
+                _originalWndProc = IntPtr.Zero;
+                _subclassWndProc = null;
+            }
+        }
+
+        private nint WindowProc(nint hWnd, uint msg, nuint wParam, nint lParam)
+        {
+            switch (msg)
+            {
+                case WM_MOUSEWHEEL:
+                    Interlocked.Add(ref _pendingMouseWheelVertical, GetWheelDelta(wParam));
+                    break;
+
+                case WM_MOUSEHWHEEL:
+                    Interlocked.Add(ref _pendingMouseWheelHorizontal, GetWheelDelta(wParam));
+                    break;
+            }
+
+            return CallWindowProc(_originalWndProc, hWnd, msg, wParam, lParam);
+        }
+
+        private static int GetWheelDelta(nuint wParam)
+        {
+            return unchecked((short)(((ulong)wParam >> 16) & 0xFFFF));
+        }
+
+        private static nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong)
+        {
+            return IntPtr.Size == 8
+                ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong)
+                : (nint)SetWindowLong32(hWnd, nIndex, (int)dwNewLong);
         }
 
         private static Dictionary<Keys, ImGuiKey> CreateDefaultVirtualKeyMap()
@@ -348,6 +466,17 @@ namespace PhantomRender.ImGui.Core.Inputs
                 { Keys.OemBackslash, ImGuiKey.Backslash }
             };
         }
+
+        private delegate nint WndProcDelegate(nint hWnd, uint msg, nuint wParam, nint lParam);
+
+        [DllImport("user32.dll", EntryPoint = "CallWindowProcW")]
+        private static extern nint CallWindowProc(nint lpPrevWndFunc, nint hWnd, uint msg, nuint wParam, nint lParam);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+        private static extern nint SetWindowLongPtr64(nint hWnd, int nIndex, nint dwNewLong);
+
+        [DllImport("user32.dll", EntryPoint = "SetWindowLongW", SetLastError = true)]
+        private static extern int SetWindowLong32(nint hWnd, int nIndex, int dwNewLong);
     }
 
     public sealed class InputImguiEmu : InputEmulator

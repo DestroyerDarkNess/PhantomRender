@@ -64,7 +64,7 @@ namespace PhantomRender.ImGui.Native
 
             if (_input != null)
             {
-                _input.ClearEvents();
+                _input.Dispose();
                 _input = null;
             }
         }
@@ -73,7 +73,7 @@ namespace PhantomRender.ImGui.Native
         {
             ApplyStyle();
 
-            _input?.ClearEvents();
+            _input?.Dispose();
             _input = new InputImguiEmu(e.IO, e.Renderer.WindowHandle)
             {
                 KeyRepeatDelay = TimeSpan.FromMilliseconds(150),
