@@ -17,9 +17,7 @@
 
 ## Table of Contents
 
-- [Overview](#overview)
 - [Project Structure](#project-structure)
-- [Features](#features)
 - [Graphics Support](#graphics-support)
 - [Build And Publish](#build-and-publish)
 - [Debug And Test](#debug-and-test)
@@ -29,26 +27,6 @@
 - [Future Work](#future-work)
 - [License](#license)
 
-## Overview
-
-PhantomRender is an injected ImGui overlay host for Windows titles that use:
-
-- DirectX 9
-- DirectX 10
-- DirectX 11
-- DirectX 12
-- OpenGL
-- Vulkan
-
-The current codebase is focused on a clean internal overlay path:
-
-- native bootstrap DLL with `DllMain` entry point
-- automatic graphics API detection
-- one active backend per process
-- robust resize/reset handling
-- minimized managed allocations in hot render paths
-- file logging for injected sessions
-
 ## Project Structure
 
 | Project | Description |
@@ -56,20 +34,6 @@ The current codebase is focused on a clean internal overlay path:
 | `src/PhantomRender` | Core hooks and low-level graphics/input interop. |
 | `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL/Vulkan. |
 | `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, logging, and default sample UI. |
-
-## Features
-
-- Automatic backend probe and activation.
-- DXGI-based hook path for DX10, DX11, and DX12.
-- DX9 `Present` and `EndScene` support.
-- OpenGL `wglSwapBuffers` hook path.
-- Unity compatibility mode for DX11 and DX12 titles.
-- Owner-thread pinning for render callbacks to avoid unstable cross-thread entry into the runtime.
-- DXGI resize recovery and OpenGL target/context reinitialization on display changes.
-- Vulkan backend bootstrap and diagnostics are present, but the backend is still under construction.
-- Reduced per-frame delegate/allocation churn across render backends.
-- Built-in sample UI with `Insert` toggle and `Delete` shutdown hotkeys.
-- Persistent file logging for injected sessions.
 
 ## Graphics Support
 
@@ -120,7 +84,7 @@ That folder contains:
 
 ### Debug the ImGui menu directly
 
-To test or debug the ImGui menu itself, run the project normally in Visual Studio using the standard `Debug` configuration.
+To test or debug the ImGui menu itself, run `PhantomRender.ImGui.Native` as a normal console app in Visual Studio using the standard `Debug` configuration.
 
 This is the fastest way to:
 
@@ -139,17 +103,9 @@ Each script publishes the injectable DLL and its native dependencies to the corr
 
 ## Injection Quick Start
 
-1. Publish the native host in `Release`.
-2. Inject `PhantomRender.ImGui.Native.dll` into the target process.
-3. Keep `cimgui.dll` and `ImGuiImpl.dll` next to the injected DLL.
-4. Start or resume the target process.
-5. Use `Insert` to show or hide the sample UI.
-6. Use `Delete` to request overlay shutdown.
-
-Notes:
-
-- The sample internal UI starts visible in the default native host.
-- Backend selection defaults to automatic detection.
+1. Inject `PhantomRender.ImGui.Native.dll` into the target game process.
+2. Use `Insert` to show or hide the sample UI.
+3. Use `Delete` to request overlay shutdown.
 
 ## Diagnostics
 
@@ -159,35 +115,21 @@ On startup, the native host redirects console output to:
 <publish folder>/PhantomRender.Native.log
 ```
 
-If that folder is not writable, it falls back to:
-
-```text
-%TEMP%\PhantomRender\PhantomRender.Native.log
-```
-
-The log includes:
-
-- graphics API detection
-- dependency load status
-- hook activation
-- renderer initialization
-- resize/reset/context change events
-- Vulkan bootstrap and unsupported-path diagnostics
-- runtime errors and exceptions
-
 ### Debugging a game crash
 
 If the game crashes after injection, use this workflow:
 
 1. Open Visual Studio.
 2. Launch the game normally.
-3. Attach Visual Studio to the game process.
-4. Inject `PhantomRender.ImGui.Native.dll`.
-5. Wait for the crash.
-6. Copy the Visual Studio error message.
-7. Copy the call stack shown by Visual Studio.
-8. Collect `PhantomRender.Native.log` from the same folder as the injected DLL.
-9. Open an issue and include all three:
+3. In Visual Studio, open `Debug > Attach to Process...`.
+4. Find the game process in the list and select it.
+5. Press `Attach`.
+6. Inject `PhantomRender.ImGui.Native.dll`.
+7. Wait for the crash.
+8. Copy the Visual Studio error message.
+9. Open the `Call Stack` window and copy the call stack shown by Visual Studio.
+10. Collect `PhantomRender.Native.log` from the same folder as the injected DLL.
+11. Open an issue and include all three:
    the error message, the call stack, and the log.
 
 ### Crash Report Template
