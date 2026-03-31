@@ -1,0 +1,35 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64;x86</Platforms>
+    <OutputType Condition="'$(OutputType)' == '' and '$(PhantomRenderNetFrameworkOutputType)' != ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
+    <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
+    <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">PhantomRender.ImGui.NetFramework.Program</StartupObject>
+    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
+    <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_NativeRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_NativeRuntimeIdentifier>
+    <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_NativeRuntimeIdentifier>
+    <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == ''">win-x64</_NativeRuntimeIdentifier>
+    <OutputType>Exe</OutputType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
+  </ItemGroup>
+
+  <Target Name="CopyImGuiRuntimeDepsToPrimaryOutput" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <ItemGroup>
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll')" />
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_PrimaryOutputNativeDeps)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_PrimaryOutputNativeDeps)' != ''" />
+  </Target>
+
+</Project>

@@ -9,6 +9,8 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhantomRender.ImGui", "Phan
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhantomRender.ImGui.Native", "PhantomRender.ImGui.Native\PhantomRender.ImGui.Native.csproj", "{3DB1DC50-1191-46C8-BED8-9272FFA3387E}"
 EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PhantomRender.ImGui.NetFramework", "PhantomRender.ImGui.NetFramework\PhantomRender.ImGui.NetFramework.csproj", "{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -55,6 +57,18 @@ Global
 		{3DB1DC50-1191-46C8-BED8-9272FFA3387E}.Release|x64.Build.0 = Release|x64
 		{3DB1DC50-1191-46C8-BED8-9272FFA3387E}.Release|x86.ActiveCfg = Release|x86
 		{3DB1DC50-1191-46C8-BED8-9272FFA3387E}.Release|x86.Build.0 = Release|x86
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|Any CPU.Build.0 = Debug|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|x64.ActiveCfg = Debug|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|x64.Build.0 = Debug|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|x86.ActiveCfg = Debug|x86
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Debug|x86.Build.0 = Debug|x86
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|Any CPU.ActiveCfg = Release|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|Any CPU.Build.0 = Release|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|x64.ActiveCfg = Release|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|x64.Build.0 = Release|x64
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|x86.ActiveCfg = Release|x86
+		{5B04DD6C-A72D-40C2-BD90-5D1A1D0466FC}.Release|x86.Build.0 = Release|x86
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
