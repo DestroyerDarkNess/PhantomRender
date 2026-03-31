@@ -74,12 +74,12 @@ The current codebase is focused on a clean internal overlay path:
 
 | API | Status | Notes |
 |---|---|---|
-| DirectX 9 | Supported | `Present` and `EndScene` modes are implemented. |
-| DirectX 10 | Supported | DXGI `IDXGISwapChain::Present` path. |
-| DirectX 11 | Supported | Stable resize path, owner-thread filtering, and Unity compatibility mode. |
-| DirectX 12 | Supported | Queue capture path with Unity compatibility mode; still validate per title. |
-| OpenGL | Supported | `wglSwapBuffers` hook path with target/context reinit on change. |
-| Vulkan | In Progress | Backend is still under construction and is not considered working yet. |
+| DirectX 9 | ✅ Supported | `Present` and `EndScene` modes are implemented. |
+| DirectX 10 | ✅ Supported | DXGI `IDXGISwapChain::Present` path. |
+| DirectX 11 | ✅ Supported | Stable resize path, owner-thread filtering, and Unity compatibility mode. |
+| DirectX 12 | ✅ Supported | Queue capture path with Unity compatibility mode; still validate per title. |
+| OpenGL | ✅ Supported | `wglSwapBuffers` hook path with target/context reinit on change. |
+| Vulkan | 🚧 In Progress | Backend is still under construction and is not considered working yet. |
 
 ## Build And Publish
 
