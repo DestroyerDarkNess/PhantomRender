@@ -27,7 +27,12 @@ namespace PhantomRender.ImGui.Native
         {
             _overlay = overlay ?? throw new ArgumentNullException(nameof(overlay));
             _externalWindow = externalWindow;
-            _renderer = (overlay as InternalOverlay)?.Renderer;
+            _renderer = overlay switch
+            {
+                InternalOverlay internalOverlay => internalOverlay.Renderer,
+                ExternalOverlay externalOverlay => externalOverlay.Renderer,
+                _ => null,
+            };
             _modeText = $"Mode: {(externalWindow != null ? "External" : "Internal")}";
             _rendererText = $"Renderer: {_overlay.GraphicsApi.ToDisplayName()}";
             _overlay.ImGuiInitialized += OnImGuiInitialized;
