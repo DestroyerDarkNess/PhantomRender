@@ -62,10 +62,10 @@ The current codebase is focused on a clean internal overlay path:
 - DXGI-based hook path for DX10, DX11, and DX12.
 - DX9 `Present` and `EndScene` support.
 - OpenGL `wglSwapBuffers` hook path.
-- Vulkan `vkQueuePresentKHR` hook path with tracked instance/device/queue/swapchain lifecycle.
+- Unity compatibility mode for DX11 and DX12 titles.
 - Owner-thread pinning for render callbacks to avoid unstable cross-thread entry into the runtime.
 - DXGI resize recovery and OpenGL target/context reinitialization on display changes.
-- Vulkan swapchain target reinitialization when device/swapchain/window changes.
+- Vulkan backend bootstrap and diagnostics are present, but the backend is still under construction.
 - Reduced per-frame delegate/allocation churn across render backends.
 - Built-in sample UI with `Insert` toggle and `Delete` shutdown hotkeys.
 - Persistent file logging for injected sessions.
@@ -76,10 +76,10 @@ The current codebase is focused on a clean internal overlay path:
 |---|---|---|
 | DirectX 9 | Supported | `Present` and `EndScene` modes are implemented. |
 | DirectX 10 | Supported | DXGI `IDXGISwapChain::Present` path. |
-| DirectX 11 | Supported | Stable resize path and owner-thread filtering. |
-| DirectX 12 | Supported | Queue capture + minimal ImGui command path; still validate per title. |
+| DirectX 11 | Supported | Stable resize path, owner-thread filtering, and Unity compatibility mode. |
+| DirectX 12 | Supported | Queue capture path with Unity compatibility mode; still validate per title. |
 | OpenGL | Supported | `wglSwapBuffers` hook path with target/context reinit on change. |
-| Vulkan | Supported | `vkQueuePresentKHR` hook path with tracked queue/swapchain lifecycle; validate per title. |
+| Vulkan | In Progress | Backend is still under construction and is not considered working yet. |
 
 ## Build And Publish
 
@@ -150,7 +150,7 @@ The log includes:
 - hook activation
 - renderer initialization
 - resize/reset/context change events
-- Vulkan late-injection and unsupported-path diagnostics
+- Vulkan bootstrap and unsupported-path diagnostics
 - runtime errors and exceptions
 
 ## Known Issues
@@ -160,7 +160,7 @@ See [KNOWN_ISSUES.md](./KNOWN_ISSUES.md).
 ## Future Work
 
 - Expand compatibility coverage across more tested titles.
-- Improve Vulkan fallback coverage for late injection and split present/graphics queue setups.
+- Finish the Vulkan backend and make it usable across real titles.
 - Add dedicated samples for custom overlay UIs and integrations.
 
 ## License
