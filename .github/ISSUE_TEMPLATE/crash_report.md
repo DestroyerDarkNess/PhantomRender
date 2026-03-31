@@ -1,34 +1,48 @@
 ---
 name: Crash report
 about: Report a game crash or injection failure
-title: "[Crash] "
+title: "[Crash] <Game name> - <API> - <x86/x64>"
 labels: bug
 assignees: ""
 ---
 
-Title: [Crash] <Game name> - <API> - <x86/x64>
+## Game Information
 
-Game:
-Version:
-Engine (if known):
-Graphics API:
-Architecture:
-Injection method:
+- Game:
+- Version:
+- Engine (if known):
+- Graphics API:
+- Architecture:
+- Injection method:
 
-What happened:
-<Short description of the crash or failure>
+## What Happened
 
-Expected behavior:
-<What you expected instead>
+Describe the crash or failure here.
 
-Visual Studio error message:
-<Paste the exact error message here>
+## Expected Behavior
 
-Call stack:
-<Paste the full call stack here>
+Describe what you expected instead.
 
-PhantomRender.Native.log:
-<Paste the full log here>
+## Visual Studio Error Message
 
-Extra notes:
-<Anything else that may help reproduce the issue>
+```text
+Paste the exact Visual Studio error message here
+```
+
+## Call Stack
+
+```text
+Paste the full call stack here
+```
+
+## PhantomRender.Native.log
+
+```text
+Paste the full log here
+```
+
+## Extra Notes
+
+- Repro steps:
+- Does it happen every time?
+- Any extra details that may help reproduce the issue?
