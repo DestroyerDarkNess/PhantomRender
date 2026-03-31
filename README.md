@@ -11,6 +11,9 @@
   Universal graphics hook + ImGui injected runtime for Windows games and applications.
 </p>
 <p align="center">
+  Includes two host variants: a modern NativeAOT host on .NET 9 and a managed host on .NET Framework 4.8.
+</p>
+<p align="center">
   <a href="./Games.md">Games Tested Gallery</a> ·
   <a href="./KNOWN_ISSUES.md">Known Issues</a>
 </p>
@@ -18,6 +21,7 @@
 ## Table of Contents
 
 - [Project Structure](#project-structure)
+- [Runtime Hosts](#runtime-hosts)
 - [Graphics Support](#graphics-support)
 - [Build And Publish](#build-and-publish)
 - [Debug And Test](#debug-and-test)
@@ -34,6 +38,14 @@
 | `src/PhantomRender` | Core hooks and low-level graphics/input interop. |
 | `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL/Vulkan. |
 | `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, logging, and default sample UI. |
+| `src/PhantomRender.ImGui.NetFramework` | Managed .NET Framework 4.8 host with classic `Program.Main(...)` debug entrypoint and `dllmain.EntryPoint()` injection entrypoint. |
+
+## Runtime Hosts
+
+| Host | Runtime | Primary use |
+|---|---|---|
+| `PhantomRender.ImGui.Native` | .NET 9 NativeAOT | Default modern injected DLL host. |
+| `PhantomRender.ImGui.NetFramework` | .NET Framework 4.8 | Managed host for classic CLR-based injection workflows. |
 
 ## Graphics Support
 
@@ -53,6 +65,8 @@
 - Windows
 - .NET 9 SDK
 - Visual Studio 2022 or compatible MSVC build tools for NativeAOT publish
+
+### NativeAOT host (.NET 9)
 
 ### Debug build
 
@@ -80,6 +94,18 @@ That folder contains:
 - `cimgui.dll`
 - `ImGuiImpl.dll`
 
+### Managed host (.NET Framework 4.8)
+
+```powershell
+dotnet build src/PhantomRender.ImGui.NetFramework/PhantomRender.ImGui.NetFramework.csproj -c Debug
+```
+
+This host is the .NET Framework 4.8 equivalent of `PhantomRender.ImGui.Native`.
+
+- `Program.Main(...)` is the classic console/debug entrypoint.
+- `dllmain.EntryPoint()` is the managed injection entrypoint.
+- Standard build output goes to the project's normal `bin\<Configuration>\net48\` folder.
+
 ## Debug And Test
 
 ### Debug the ImGui menu directly
@@ -91,6 +117,8 @@ This is the fastest way to:
 - verify that the sample menu opens
 - test UI changes
 - debug overlay logic without injection
+
+If you want the classic managed path instead, run `PhantomRender.ImGui.NetFramework` as a console app and use its `Program.Main(...)` entrypoint.
 
 ### Build the injectable DLL
 
