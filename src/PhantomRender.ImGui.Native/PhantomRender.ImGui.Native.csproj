@@ -6,9 +6,10 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
-    <PhantomRenderNativeOutputType Condition="'$(PhantomRenderNativeOutputType)' == ''">Library</PhantomRenderNativeOutputType>
-    <OutputType>$(PhantomRenderNativeOutputType)</OutputType>
-    <StartupObject Condition="'$(PhantomRenderNativeOutputType)' == 'Exe'">PhantomRender.ImGui.Native.Program</StartupObject>
+    <OutputType Condition="'$(OutputType)' == '' and '$(PhantomRenderNativeOutputType)' != ''">$(PhantomRenderNativeOutputType)</OutputType>
+    <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
+    <!-- Drive compile items from the real OutputType so Visual Studio and CLI stay in sync. -->
+    <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">PhantomRender.ImGui.Native.Program</StartupObject>
     <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
     <AutoPublishOnBuild Condition="'$(AutoPublishOnBuild)' == ''">true</AutoPublishOnBuild>
   </PropertyGroup>
@@ -18,18 +19,19 @@
     <_AutoPublishRuntimeIdentifier Condition="'$(_AutoPublishRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_AutoPublishRuntimeIdentifier>
     <_AutoPublishRuntimeIdentifier Condition="'$(_AutoPublishRuntimeIdentifier)' == ''">win-x64</_AutoPublishRuntimeIdentifier>
     <_AutoPublishDir>$(MSBuildProjectDirectory)\bin\$(Configuration)\publish\$(_AutoPublishRuntimeIdentifier)\</_AutoPublishDir>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(PhantomRenderNativeOutputType)' == 'Exe'">
+  <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
     <Compile Remove="Exports.cs" />
     <None Include="Exports.cs" />
   </ItemGroup>
 
-  <ItemGroup Condition="'$(PhantomRenderNativeOutputType)' != 'Exe'">
+  <ItemGroup Condition="'$(OutputType)' != 'Exe' and '$(OutputType)' != 'WinExe'">
     <Compile Remove="Program.cs" />
     <None Include="Program.cs" />
   </ItemGroup>
@@ -60,6 +62,17 @@
     <Copy SourceFiles="@(_PublishedNativeDeps)" DestinationFolder="%(_NativeOutputDirs.Identity)" SkipUnchangedFiles="true" Condition="'@(_PublishedNativeDeps)' != '' and '@(_NativeOutputDirs)' != ''" />
 
     <Message Importance="High" Condition="'@(_NativeOutputDirs)' != ''" Text="Copied native outputs to: @(_NativeOutputDirs, ', ')" />
+  </Target>
+
+  <Target Name="CopyImGuiRuntimeDepsToPrimaryOutput" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true'&#xA;                   and '$(IsCrossTargetingBuild)' != 'true'">
+    <ItemGroup>
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_AutoPublishRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(TargetDir)runtimes\$(_AutoPublishRuntimeIdentifier)\native\cimgui.dll')" />
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_AutoPublishRuntimeIdentifier)\native\ImGuiImpl.dll" Condition="Exists('$(TargetDir)runtimes\$(_AutoPublishRuntimeIdentifier)\native\ImGuiImpl.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_PrimaryOutputNativeDeps)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_PrimaryOutputNativeDeps)' != ''" />
+
+    <Message Importance="High" Condition="'@(_PrimaryOutputNativeDeps)' != ''" Text="Copied ImGui native dependencies to primary output: $(TargetDir)" />
   </Target>
 
 </Project>
