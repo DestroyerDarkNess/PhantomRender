@@ -1,6 +1,5 @@
 using System;
 using System.IO;
-using System.Reflection;
 using PhantomRender.Core;
 using PhantomRender.Overlays;
 using PhantomRender.ImGui;
@@ -34,7 +33,7 @@ namespace PhantomRender.ImGui.NetFramework
                     host.TransparentColor = OverlayColor.Black;
                 }
 
-                string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+                string assemblyDirectory = HostPathResolver.ResolveInjectedHostDirectory("PhantomRender.ImGui.NetFramework.dll");
                 if (!overlay.Dependencies.LoadDependencies(assemblyDirectory))
                 {
                     Console.WriteLine("[PhantomRender] Failed to load native ImGui dependencies.");

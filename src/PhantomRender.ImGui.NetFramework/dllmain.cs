@@ -1,7 +1,7 @@
 using System;
 using System.Diagnostics;
 using System.IO;
-using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using PhantomRender.Core;
@@ -10,14 +10,13 @@ using PhantomRender.ImGui.Core.Renderers;
 
 namespace PhantomRender.ImGui.NetFramework
 {
-    public static class dllmain
+    public class dllmain
     {
         private static readonly object SyncRoot = new object();
         private static int _startupState;
         private static int _shutdownRequested;
         private static InternalOverlay _overlay;
         private static UI _ui;
-        private static Thread _workerThread;
         private static TextWriter _logWriter;
         private static TextWriter _originalOut;
         private static TextWriter _originalError;
@@ -25,27 +24,22 @@ namespace PhantomRender.ImGui.NetFramework
 
         public static void EntryPoint()
         {
+            Log("INI");
             if (Interlocked.CompareExchange(ref _startupState, 1, 0) != 0)
             {
                 return;
             }
-
+            Log("Pass Interlocked");
             InitializeLogging();
             Log("Managed net48 entrypoint invoked.");
             AppDomain.CurrentDomain.ProcessExit += OnProcessExit;
             AppDomain.CurrentDomain.DomainUnload += OnProcessExit;
-
-            _workerThread = new Thread(RunInternal)
-            {
-                IsBackground = true,
-                Name = "PhantomRender.NetFramework.Bootstrap",
-            };
-            _workerThread.Start();
+            RunInternal();
         }
 
         private static void RunInternal()
         {
-            Log("Managed bootstrap thread started.");
+            Log("Managed bootstrap started.");
 
             try
             {
@@ -95,7 +89,7 @@ namespace PhantomRender.ImGui.NetFramework
             };
             var ui = new UI(overlay);
 
-            string assemblyDirectory = Path.GetDirectoryName(Assembly.GetExecutingAssembly().Location);
+            string assemblyDirectory = HostPathResolver.ResolveInjectedHostDirectory("PhantomRender.ImGui.NetFramework.dll");
             if (!overlay.Dependencies.LoadDependencies(assemblyDirectory))
             {
                 Log("Failed to load native ImGui dependencies.");
@@ -175,16 +169,22 @@ namespace PhantomRender.ImGui.NetFramework
             {
                 case GraphicsApi.DirectX12:
                     return new DirectX12Renderer();
+
                 case GraphicsApi.DirectX11:
                     return new DirectX11Renderer();
+
                 case GraphicsApi.DirectX10:
                     return new DirectX10Renderer();
+
                 case GraphicsApi.DirectX9:
                     return new DirectX9Renderer();
+
                 case GraphicsApi.OpenGL:
                     return new OpenGLRenderer();
+
                 case GraphicsApi.Vulkan:
                     return new VulkanRenderer();
+
                 default:
                     throw new NotSupportedException($"{graphicsApi.ToDisplayName()} does not have a managed net48 host.");
             }
@@ -335,17 +335,9 @@ namespace PhantomRender.ImGui.NetFramework
 
         private static string ResolveLogPath()
         {
-            string assemblyPath = Assembly.GetExecutingAssembly().Location;
-            if (!string.IsNullOrWhiteSpace(assemblyPath))
-            {
-                string directory = Path.GetDirectoryName(assemblyPath);
-                if (!string.IsNullOrWhiteSpace(directory))
-                {
-                    return Path.Combine(directory, "PhantomRender.NetFramework.log");
-                }
-            }
-
-            return Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "PhantomRender.NetFramework.log");
+            return Path.Combine(
+                HostPathResolver.ResolveLoaderDirectory("PhantomRender.ImGui.NetFramework.dll"),
+                "PhantomRender.NetFramework.log");
         }
     }
 }
