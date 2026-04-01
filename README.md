@@ -96,7 +96,9 @@ That folder contains:
 
 ### Managed host (.NET Framework 4.8)
 
-Video walkthrough: [netfxbuild.mp4](./src/netfxbuild.mp4)
+Video walkthrough:  
+
+https://github.com/user-attachments/assets/0d236a89-ae5d-497b-9958-e1ade56f4f0c
 
 This host is the .NET Framework 4.8 equivalent of `PhantomRender.ImGui.Native`.
 
