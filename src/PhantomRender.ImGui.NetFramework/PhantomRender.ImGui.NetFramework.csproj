@@ -5,8 +5,8 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
-    <OutputType Condition="'$(OutputType)' == '' and '$(PhantomRenderNetFrameworkOutputType)' != ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
-    <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
+    <PhantomRenderNetFrameworkOutputType Condition="'$(PhantomRenderNetFrameworkOutputType)' == ''">Exe</PhantomRenderNetFrameworkOutputType>
+    <OutputType Condition="'$(OutputType)' == ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
     <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">PhantomRender.ImGui.NetFramework.Program</StartupObject>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
@@ -16,7 +16,10 @@
     <_NativeRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_NativeRuntimeIdentifier>
     <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_NativeRuntimeIdentifier>
     <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == ''">win-x64</_NativeRuntimeIdentifier>
-    <OutputType>Exe</OutputType>
+    <_NuGetPackageRoot Condition="'$(NuGetPackageRoot)' != ''">$(NuGetPackageRoot)</_NuGetPackageRoot>
+    <_NuGetPackageRoot Condition="'$(_NuGetPackageRoot)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.UserProfile))\.nuget\packages\</_NuGetPackageRoot>
+    <_HexaImGuiNativePackagePath>$(_NuGetPackageRoot)hexa.net.imgui\2.2.9\runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll</_HexaImGuiNativePackagePath>
+    <_HexaImGuiBackendsNativePackagePath>$(_NuGetPackageRoot)hexa.net.imgui.backends\1.0.18\runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll</_HexaImGuiBackendsNativePackagePath>
   </PropertyGroup>
 
   <ItemGroup>
@@ -27,6 +30,8 @@
     <ItemGroup>
       <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll')" />
       <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll')" />
+      <_PrimaryOutputNativeDeps Include="$(_HexaImGuiNativePackagePath)" Condition="!Exists('$(TargetDir)cimgui.dll') and Exists('$(_HexaImGuiNativePackagePath)')" />
+      <_PrimaryOutputNativeDeps Include="$(_HexaImGuiBackendsNativePackagePath)" Condition="!Exists('$(TargetDir)ImGuiImpl.dll') and Exists('$(_HexaImGuiBackendsNativePackagePath)')" />
     </ItemGroup>
 
     <Copy SourceFiles="@(_PrimaryOutputNativeDeps)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_PrimaryOutputNativeDeps)' != ''" />
