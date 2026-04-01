@@ -868,6 +868,13 @@ namespace PhantomRender.Overlays
 
         private delegate nint WndProcDelegate(nint hWnd, uint msg, nint wParam, nint lParam);
 
+        private static nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong)
+        {
+            return IntPtr.Size == 8
+                ? SetWindowLongPtr64(hWnd, nIndex, dwNewLong)
+                : (nint)SetWindowLong32(hWnd, nIndex, (int)dwNewLong);
+        }
+
         [DllImport("user32.dll", CharSet = CharSet.Unicode, EntryPoint = "RegisterClassExW", SetLastError = true)]
         private static extern ushort RegisterClassExW(ref WNDCLASSEX lpwcx);
 
@@ -906,7 +913,10 @@ namespace PhantomRender.Overlays
         private static extern bool SetWindowPos(nint hWnd, nint hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
         [DllImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowLongPtrW")]
-        private static extern nint SetWindowLongPtr(nint hWnd, int nIndex, nint dwNewLong);
+        private static extern nint SetWindowLongPtr64(nint hWnd, int nIndex, nint dwNewLong);
+
+        [DllImport("user32.dll", SetLastError = true, EntryPoint = "SetWindowLongW")]
+        private static extern int SetWindowLong32(nint hWnd, int nIndex, int dwNewLong);
 
         [DllImport("user32.dll", SetLastError = true)]
         [return: MarshalAs(UnmanagedType.Bool)]
