@@ -96,15 +96,45 @@ That folder contains:
 
 ### Managed host (.NET Framework 4.8)
 
+Video walkthrough: [netfxbuild.mp4](./src/netfxbuild.mp4)
+
+This host is the .NET Framework 4.8 equivalent of `PhantomRender.ImGui.Native`.
+
+#### Debug as a normal console app
+
 ```powershell
 dotnet build src/PhantomRender.ImGui.NetFramework/PhantomRender.ImGui.NetFramework.csproj -c Debug
 ```
 
-This host is the .NET Framework 4.8 equivalent of `PhantomRender.ImGui.Native`.
-
 - `Program.Main(...)` is the classic console/debug entrypoint.
 - `dllmain.EntryPoint()` is the managed injection entrypoint.
-- Standard build output goes to the project's normal `bin\<Configuration>\net48\` folder.
+- Standard debug output goes to `src/PhantomRender.ImGui.NetFramework/bin/<arch>/Debug/net48/`.
+
+#### Build the injectable DLL
+
+Use one of the batch files in `src/`:
+
+- `src/publish-netfx-x64.bat` for `x64` targets
+- `src/publish-netfx-x86.bat` for `x86` targets
+
+Each script:
+
+- builds `PhantomRender.ImGui.NetFramework` in `Release` as `Library`
+- asks for the path to `Hydra.exe`
+- uses the preset [PhantomRender.ImGui.NetFramework.json](./src/PhantomRender.ImGui.NetFramework.json)
+- runs Hydra in console mode against `PhantomRender.ImGui.NetFramework.dll`
+
+Expected release output:
+
+```text
+src/PhantomRender.ImGui.NetFramework/bin/<arch>/Release/net48/
+```
+
+That folder should contain at least:
+
+- `PhantomRender.ImGui.NetFramework.dll`
+- `cimgui.dll`
+- `ImGuiImpl.dll`
 
 ## Debug And Test
 
@@ -128,6 +158,11 @@ To test the injectable NativeAOT DLL, use one of the batch files in `src/`:
 - `src/publish-x86.bat` for `x86` games
 
 Each script publishes the injectable DLL and its native dependencies to the corresponding `publish` folder.
+
+For the managed `.NET Framework 4.8` host, use:
+
+- `src/publish-netfx-x64.bat`
+- `src/publish-netfx-x86.bat`
 
 ## Injection Quick Start
 
