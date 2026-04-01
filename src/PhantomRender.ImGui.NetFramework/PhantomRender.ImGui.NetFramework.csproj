@@ -16,7 +16,7 @@
     <_NativeRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_NativeRuntimeIdentifier>
     <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_NativeRuntimeIdentifier>
     <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == ''">win-x64</_NativeRuntimeIdentifier>
-    <OutputType>Library</OutputType>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
