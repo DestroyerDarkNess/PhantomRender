@@ -1,0 +1,8 @@
+<Directives xmlns="http://schemas.microsoft.com/netfx/2013/01/metadata">
+  <Application>
+    <Assembly Name="MinHook.NET" Dynamic="Required All" />
+    <Assembly Name="MinHook.NET">
+      <Type Name="MinHook.Trampoline+JMP_ABS" Dynamic="Required All" MarshalStructure="Required All" />
+    </Assembly>
+  </Application>
+</Directives>

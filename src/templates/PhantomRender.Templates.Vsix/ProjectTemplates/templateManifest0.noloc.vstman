@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<VSTemplateManifest Version="1.0" xmlns="http://schemas.microsoft.com/developer/vstemplatemanifest/2015">
+  <VSTemplateContainer TemplateType="Project">
+    <RelativePathOnDisk>PhantomRender.NativeAot.Template</RelativePathOnDisk>
+    <TemplateFileName>PhantomRender.NativeAot.vstemplate</TemplateFileName>
+    <VSTemplateHeader>
+      <TemplateData xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+        <Name>PhantomRender NativeAOT Overlay Host</Name>
+        <Description>Creates a NativeAOT internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+        <TemplateID>PhantomRender.NativeAot.OverlayHost</TemplateID>
+        <ProjectType>CSharp</ProjectType>
+        <DefaultName>PhantomRender.NativeHost</DefaultName>
+        <ProvideDefaultName>true</ProvideDefaultName>
+        <CreateNewFolder>true</CreateNewFolder>
+        <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+        <LocationField>Enabled</LocationField>
+        <CreateInPlace>true</CreateInPlace>
+        <SortOrder>1000</SortOrder>
+        <PromptForSaveOnCreation>true</PromptForSaveOnCreation>
+        <TargetPlatformName>Windows</TargetPlatformName>
+        <LanguageTag>CSharp</LanguageTag>
+        <PlatformTag>Windows</PlatformTag>
+        <ProjectTypeTag>Desktop</ProjectTypeTag>
+        <ProjectTypeTag>Library</ProjectTypeTag>
+      </TemplateData>
+    </VSTemplateHeader>
+  </VSTemplateContainer>
+  <VSTemplateContainer TemplateType="Project">
+    <RelativePathOnDisk>PhantomRender.NetFramework.Template</RelativePathOnDisk>
+    <TemplateFileName>PhantomRender.NetFramework.vstemplate</TemplateFileName>
+    <VSTemplateHeader>
+      <TemplateData xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+        <Name>PhantomRender .NET Framework Overlay Host</Name>
+        <Description>Creates a .NET Framework 4.8 internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+        <TemplateID>PhantomRender.NetFramework.OverlayHost</TemplateID>
+        <ProjectType>CSharp</ProjectType>
+        <DefaultName>PhantomRender.NetFrameworkHost</DefaultName>
+        <ProvideDefaultName>true</ProvideDefaultName>
+        <CreateNewFolder>true</CreateNewFolder>
+        <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+        <LocationField>Enabled</LocationField>
+        <CreateInPlace>true</CreateInPlace>
+        <SortOrder>1001</SortOrder>
+        <PromptForSaveOnCreation>true</PromptForSaveOnCreation>
+        <RequiredFrameworkVersion>4.8</RequiredFrameworkVersion>
+        <TargetPlatformName>Windows</TargetPlatformName>
+        <LanguageTag>CSharp</LanguageTag>
+        <PlatformTag>Windows</PlatformTag>
+        <ProjectTypeTag>Desktop</ProjectTypeTag>
+        <ProjectTypeTag>Library</ProjectTypeTag>
+      </TemplateData>
+    </VSTemplateHeader>
+  </VSTemplateContainer>
+</VSTemplateManifest>
