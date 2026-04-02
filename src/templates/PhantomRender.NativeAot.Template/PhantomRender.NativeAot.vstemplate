@@ -1,0 +1,24 @@
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>PhantomRender NativeAOT Overlay Host</Name>
+    <Description>Creates a NativeAOT internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+    <ProjectType>CSharp</ProjectType>
+    <DefaultName>PhantomRender.NativeHost</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <CreateNewFolder>true</CreateNewFolder>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+    <LocationField>Enabled</LocationField>
+    <SortOrder>1000</SortOrder>
+  </TemplateData>
+  <TemplateContent>
+    <Project File="PhantomRender.NativeAot.Template.csproj" ReplaceParameters="true" TargetFileName="$safeprojectname$.csproj">
+      <ProjectItem ReplaceParameters="true" TargetFileName="Exports.cs">Exports.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="Program.cs">Program.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="publish-x64.bat">publish-x64.bat</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="publish-x86.bat">publish-x86.bat</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="UI.cs">UI.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="README.md">README.md</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="rd.xml">rd.xml</ProjectItem>
+    </Project>
+  </TemplateContent>
+</VSTemplate>

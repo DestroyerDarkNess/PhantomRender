@@ -58,3 +58,5 @@ TestResults
 *.user
 Thumbs.db
 desktop.ini
+src/templates/artifacts/
+src/templates/PhantomRender.Templates.Vsix/Templates/*.zip

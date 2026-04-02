@@ -1,0 +1,25 @@
+<VSTemplate Version="3.0.0" Type="Project" xmlns="http://schemas.microsoft.com/developer/vstemplate/2005">
+  <TemplateData>
+    <Name>PhantomRender .NET Framework Overlay Host</Name>
+    <Description>Creates a .NET Framework 4.8 internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+    <ProjectType>CSharp</ProjectType>
+    <DefaultName>PhantomRender.NetFrameworkHost</DefaultName>
+    <ProvideDefaultName>true</ProvideDefaultName>
+    <CreateNewFolder>true</CreateNewFolder>
+    <EnableLocationBrowseButton>true</EnableLocationBrowseButton>
+    <LocationField>Enabled</LocationField>
+    <SortOrder>1001</SortOrder>
+  </TemplateData>
+  <TemplateContent>
+    <Project File="PhantomRender.NetFramework.Template.csproj" ReplaceParameters="true" TargetFileName="$safeprojectname$.csproj">
+      <ProjectItem ReplaceParameters="true" TargetFileName="dllmain.cs">dllmain.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="HostPathResolver.cs">HostPathResolver.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="Program.cs">Program.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="publish-netfx-x64.bat">publish-netfx-x64.bat</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="publish-netfx-x86.bat">publish-netfx-x86.bat</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="UI.cs">UI.cs</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="$safeprojectname$.json">HydraPreset.json</ProjectItem>
+      <ProjectItem ReplaceParameters="true" TargetFileName="README.md">README.md</ProjectItem>
+    </Project>
+  </TemplateContent>
+</VSTemplate>

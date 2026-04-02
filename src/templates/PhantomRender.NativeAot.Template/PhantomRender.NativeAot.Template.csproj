@@ -1,0 +1,60 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <PublishAot>true</PublishAot>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <Platforms>x64;x86</Platforms>
+    <RuntimeIdentifiers>win-x64;win-x86</RuntimeIdentifiers>
+    <PhantomRenderNativeOutputType Condition="'$(PhantomRenderNativeOutputType)' == ''">Library</PhantomRenderNativeOutputType>
+    <OutputType Condition="'$(OutputType)' == ''">$(PhantomRenderNativeOutputType)</OutputType>
+    <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">$safeprojectname$.Program</StartupObject>
+    <AssemblyName>$safeprojectname$</AssemblyName>
+    <RootNamespace>$safeprojectname$</RootNamespace>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <_NativeRuntimeIdentifier Condition="'$(RuntimeIdentifier)' != ''">$(RuntimeIdentifier)</_NativeRuntimeIdentifier>
+    <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == '' and '$(Platform)' == 'x86'">win-x86</_NativeRuntimeIdentifier>
+    <_NativeRuntimeIdentifier Condition="'$(_NativeRuntimeIdentifier)' == ''">win-x64</_NativeRuntimeIdentifier>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="PhantomRender" Version="__PHANTOMRENDER_NUGET_VERSION__" />
+    <PackageReference Include="PhantomRender.ImGui" Version="__PHANTOMRENDER_NUGET_VERSION__" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
+    <Compile Remove="Exports.cs" />
+    <None Include="Exports.cs" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(OutputType)' != 'Exe' and '$(OutputType)' != 'WinExe'">
+    <Compile Remove="Program.cs" />
+    <None Include="Program.cs" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <RdXmlFile Include="rd.xml" />
+  </ItemGroup>
+
+  <Target Name="CopyImGuiRuntimeDepsToPrimaryOutput" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <ItemGroup>
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll')" />
+      <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_PrimaryOutputNativeDeps)" DestinationFolder="$(TargetDir)" SkipUnchangedFiles="true" Condition="'@(_PrimaryOutputNativeDeps)' != ''" />
+  </Target>
+
+  <Target Name="CopyImGuiRuntimeDepsToPublishOutput" AfterTargets="Publish" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
+    <ItemGroup>
+      <_PublishNativeDeps Include="$(PublishDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(PublishDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll')" />
+      <_PublishNativeDeps Include="$(PublishDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll" Condition="Exists('$(PublishDir)runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll')" />
+    </ItemGroup>
+
+    <Copy SourceFiles="@(_PublishNativeDeps)" DestinationFolder="$(PublishDir)" SkipUnchangedFiles="true" Condition="'@(_PublishNativeDeps)' != ''" />
+  </Target>
+
+</Project>
