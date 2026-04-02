@@ -5,6 +5,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
+    <IsPackable>false</IsPackable>
     <PhantomRenderNetFrameworkOutputType Condition="'$(PhantomRenderNetFrameworkOutputType)' == ''">Exe</PhantomRenderNetFrameworkOutputType>
     <OutputType Condition="'$(OutputType)' == ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
     <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">PhantomRender.ImGui.NetFramework.Program</StartupObject>

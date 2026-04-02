@@ -5,10 +5,29 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
+    <IsPackable>true</IsPackable>
+    <PackageId>PhantomRender</PackageId>
+    <Description>Core graphics hook and low-level interop primitives for Windows overlays across DirectX, OpenGL, and Vulkan.</Description>
+    <PackageTags>graphics;hook;overlay;directx;opengl;vulkan;windows</PackageTags>
+    <Authors>DestroyerDarkNess</Authors>
+    <Company>DestroyerDarkNess</Company>
+    <PackageProjectUrl>https://github.com/DestroyerDarkNess/PhantomRender</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/DestroyerDarkNess/PhantomRender.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
     <PackageReference Include="MinHook.NET" Version="1.1.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
 </Project>

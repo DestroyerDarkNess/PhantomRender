@@ -5,6 +5,20 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
+    <IsPackable>true</IsPackable>
+    <PackageId>PhantomRender.ImGui</PackageId>
+    <Description>ImGui overlay host and renderer layer for PhantomRender across DirectX, OpenGL, and Vulkan on Windows.</Description>
+    <PackageTags>imgui;overlay;graphics;directx;opengl;vulkan;windows</PackageTags>
+    <Authors>DestroyerDarkNess</Authors>
+    <Company>DestroyerDarkNess</Company>
+    <PackageProjectUrl>https://github.com/DestroyerDarkNess/PhantomRender</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/DestroyerDarkNess/PhantomRender.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PublishRepositoryUrl>true</PublishRepositoryUrl>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <IncludeSymbols>true</IncludeSymbols>
+    <SymbolPackageFormat>snupkg</SymbolPackageFormat>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,6 +29,11 @@
     <PackageReference Include="Hexa.NET.ImGui" Version="2.2.9" />
     <PackageReference Include="Hexa.NET.ImGui.Backends" Version="1.0.18" />
     <PackageReference Include="HexaGen.Runtime" Version="1.1.24" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="\" Visible="false" />
+    <None Include="..\..\LICENSE" Pack="true" PackagePath="\" Visible="false" />
   </ItemGroup>
 
   <!--

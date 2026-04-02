@@ -6,6 +6,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
+    <IsPackable>false</IsPackable>
     <OutputType Condition="'$(OutputType)' == '' and '$(PhantomRenderNativeOutputType)' != ''">$(PhantomRenderNativeOutputType)</OutputType>
     <OutputType Condition="'$(OutputType)' == ''">Library</OutputType>
     <!-- Drive compile items from the real OutputType so Visual Studio and CLI stay in sync. -->

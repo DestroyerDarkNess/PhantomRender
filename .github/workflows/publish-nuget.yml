@@ -1,0 +1,90 @@
+name: Publish NuGet
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "NuGet package version (example: 0.1.0 or 0.1.0-preview.1)"
+        required: true
+      publish:
+        description: "Publish to NuGet.org"
+        required: true
+        type: boolean
+        default: false
+
+jobs:
+  pack-and-publish:
+    runs-on: windows-latest
+    permissions:
+      contents: read
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+
+      - name: Resolve package version
+        id: version
+        shell: pwsh
+        run: |
+          if ("${{ github.event_name }}" -eq "push") {
+            $version = "${{ github.ref_name }}"
+            if ($version.StartsWith("v")) {
+              $version = $version.Substring(1)
+            }
+          } else {
+            $version = "${{ inputs.version }}"
+          }
+
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            throw "Package version could not be resolved."
+          }
+
+          "value=$version" >> $env:GITHUB_OUTPUT
+          Write-Host "Using package version: $version"
+
+      - name: Pack NuGet packages
+        shell: pwsh
+        run: |
+          & .\src\pack-nuget.bat "${{ steps.version.outputs.value }}"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nuget-packages-${{ steps.version.outputs.value }}
+          path: src/artifacts/nuget/*
+          if-no-files-found: error
+
+      - name: Publish PhantomRender
+        if: github.event_name == 'push' || inputs.publish
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "Missing repository secret: NUGET_API_KEY"
+          }
+
+          dotnet nuget push "src/artifacts/nuget/PhantomRender.${{ steps.version.outputs.value }}.nupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "src/artifacts/nuget/PhantomRender.${{ steps.version.outputs.value }}.snupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+
+      - name: Publish PhantomRender.ImGui
+        if: github.event_name == 'push' || inputs.publish
+        shell: pwsh
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:NUGET_API_KEY)) {
+            throw "Missing repository secret: NUGET_API_KEY"
+          }
+
+          dotnet nuget push "src/artifacts/nuget/PhantomRender.ImGui.${{ steps.version.outputs.value }}.nupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate
+          dotnet nuget push "src/artifacts/nuget/PhantomRender.ImGui.${{ steps.version.outputs.value }}.snupkg" --api-key $env:NUGET_API_KEY --source https://api.nuget.org/v3/index.json --skip-duplicate

@@ -27,7 +27,7 @@ ipch/
 *.tlh
 *.tli
 *.VC.db
-
+stepnuget.md
 # User-specific files
 *.suo
 *.user
