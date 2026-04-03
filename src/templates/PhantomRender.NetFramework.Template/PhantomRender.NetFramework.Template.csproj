@@ -6,7 +6,7 @@
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
     <PhantomRenderNetFrameworkOutputType Condition="'$(PhantomRenderNetFrameworkOutputType)' == ''">Exe</PhantomRenderNetFrameworkOutputType>
-    <OutputType Condition="'$(OutputType)' == ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
+    <OutputType>$(PhantomRenderNetFrameworkOutputType)</OutputType>
     <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">$safeprojectname$.Program</StartupObject>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
     <GenerateBindingRedirectsOutputType>true</GenerateBindingRedirectsOutputType>
@@ -40,24 +40,6 @@
       <Visible>false</Visible>
     </None>
     <None Update="$safeprojectname$.json">
-      <Visible>false</Visible>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
-    <Compile Remove="dllmain.cs" />
-    <Compile Remove="HostPathResolver.cs" />
-    <None Include="dllmain.cs">
-      <Visible>false</Visible>
-    </None>
-    <None Include="HostPathResolver.cs">
-      <Visible>false</Visible>
-    </None>
-  </ItemGroup>
-
-  <ItemGroup Condition="'$(OutputType)' != 'Exe' and '$(OutputType)' != 'WinExe'">
-    <Compile Remove="Program.cs" />
-    <None Include="Program.cs">
       <Visible>false</Visible>
     </None>
   </ItemGroup>

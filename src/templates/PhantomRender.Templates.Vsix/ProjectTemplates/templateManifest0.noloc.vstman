@@ -21,7 +21,7 @@
         <LanguageTag>CSharp</LanguageTag>
         <PlatformTag>Windows</PlatformTag>
         <ProjectTypeTag>Desktop</ProjectTypeTag>
-        <ProjectTypeTag>Library</ProjectTypeTag>
+        <ProjectTypeTag>Console</ProjectTypeTag>
       </TemplateData>
     </VSTemplateHeader>
   </VSTemplateContainer>
@@ -47,7 +47,7 @@
         <LanguageTag>CSharp</LanguageTag>
         <PlatformTag>Windows</PlatformTag>
         <ProjectTypeTag>Desktop</ProjectTypeTag>
-        <ProjectTypeTag>Library</ProjectTypeTag>
+        <ProjectTypeTag>Console</ProjectTypeTag>
       </TemplateData>
     </VSTemplateHeader>
   </VSTemplateContainer>

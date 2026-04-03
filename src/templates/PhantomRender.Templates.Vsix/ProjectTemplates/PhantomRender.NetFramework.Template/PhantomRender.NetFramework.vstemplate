@@ -17,7 +17,7 @@
     <LanguageTag>CSharp</LanguageTag>
     <PlatformTag>Windows</PlatformTag>
     <ProjectTypeTag>Desktop</ProjectTypeTag>
-    <ProjectTypeTag>Library</ProjectTypeTag>
+    <ProjectTypeTag>Console</ProjectTypeTag>
   </TemplateData>
   <TemplateContent>
     <Project File="PhantomRender.NetFramework.Template.csproj" ReplaceParameters="true" TargetFileName="$safeprojectname$.csproj">
