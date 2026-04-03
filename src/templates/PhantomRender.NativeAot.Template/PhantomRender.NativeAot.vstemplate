@@ -2,6 +2,7 @@
   <TemplateData>
     <Name>PhantomRender NativeAOT Overlay Host</Name>
     <Description>Creates a NativeAOT internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+    <Icon>TemplateIcon.png</Icon>
     <TemplateID>PhantomRender.NativeAot.OverlayHost</TemplateID>
     <ProjectType>CSharp</ProjectType>
     <DefaultName>PhantomRender.NativeHost</DefaultName>
@@ -12,10 +13,8 @@
     <CreateInPlace>true</CreateInPlace>
     <SortOrder>1000</SortOrder>
     <PromptForSaveOnCreation>true</PromptForSaveOnCreation>
-    <TargetPlatformName>Windows</TargetPlatformName>
     <LanguageTag>CSharp</LanguageTag>
     <PlatformTag>Windows</PlatformTag>
-    <ProjectTypeTag>Desktop</ProjectTypeTag>
     <ProjectTypeTag>Console</ProjectTypeTag>
   </TemplateData>
   <TemplateContent>

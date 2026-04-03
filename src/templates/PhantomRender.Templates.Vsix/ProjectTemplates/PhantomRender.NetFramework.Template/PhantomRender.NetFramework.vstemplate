@@ -2,6 +2,7 @@
   <TemplateData>
     <Name>PhantomRender .NET Framework Overlay Host</Name>
     <Description>Creates a .NET Framework 4.8 internal overlay host powered by PhantomRender and PhantomRender.ImGui.</Description>
+    <Icon>TemplateIcon.png</Icon>
     <TemplateID>PhantomRender.NetFramework.OverlayHost</TemplateID>
     <ProjectType>CSharp</ProjectType>
     <DefaultName>PhantomRender.NetFrameworkHost</DefaultName>
@@ -12,11 +13,8 @@
     <CreateInPlace>true</CreateInPlace>
     <SortOrder>1001</SortOrder>
     <PromptForSaveOnCreation>true</PromptForSaveOnCreation>
-    <RequiredFrameworkVersion>4.8</RequiredFrameworkVersion>
-    <TargetPlatformName>Windows</TargetPlatformName>
     <LanguageTag>CSharp</LanguageTag>
     <PlatformTag>Windows</PlatformTag>
-    <ProjectTypeTag>Desktop</ProjectTypeTag>
     <ProjectTypeTag>Console</ProjectTypeTag>
   </TemplateData>
   <TemplateContent>

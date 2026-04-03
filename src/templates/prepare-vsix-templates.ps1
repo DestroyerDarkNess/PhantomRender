@@ -24,6 +24,21 @@ $templateSpecs = @(
 )
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$textExtensions = @(
+    ".bat",
+    ".cmd",
+    ".config",
+    ".cs",
+    ".csproj",
+    ".json",
+    ".md",
+    ".props",
+    ".ps1",
+    ".targets",
+    ".txt",
+    ".vstemplate",
+    ".xml"
+)
 
 if (Test-Path $OutputDir) {
     Get-ChildItem -LiteralPath $OutputDir -Force | Remove-Item -Recurse -Force
@@ -55,9 +70,15 @@ foreach ($spec in $templateSpecs) {
             New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
         }
 
-        $content = [System.IO.File]::ReadAllText($file.FullName)
-        $content = $content.Replace($templateToken, $PhantomRenderVersion)
-        [System.IO.File]::WriteAllText($destinationPath, $content, $utf8NoBom)
+        $extension = [System.IO.Path]::GetExtension($file.Name)
+        if ($textExtensions -contains $extension.ToLowerInvariant()) {
+            $content = [System.IO.File]::ReadAllText($file.FullName)
+            $content = $content.Replace($templateToken, $PhantomRenderVersion)
+            [System.IO.File]::WriteAllText($destinationPath, $content, $utf8NoBom)
+        }
+        else {
+            [System.IO.File]::Copy($file.FullName, $destinationPath, $true)
+        }
     }
 
     $templatePath = Join-Path $templateOutputDir $spec.TemplateFileName

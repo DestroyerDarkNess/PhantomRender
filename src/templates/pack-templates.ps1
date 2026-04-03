@@ -24,6 +24,21 @@ $templateSpecs = @(
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 
 $utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+$textExtensions = @(
+    ".bat",
+    ".cmd",
+    ".config",
+    ".cs",
+    ".csproj",
+    ".json",
+    ".md",
+    ".props",
+    ".ps1",
+    ".targets",
+    ".txt",
+    ".vstemplate",
+    ".xml"
+)
 $stagingRoot = Join-Path ([System.IO.Path]::GetTempPath()) ("PhantomRenderTemplates-" + [Guid]::NewGuid().ToString("N"))
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
@@ -47,9 +62,15 @@ try {
                 New-Item -ItemType Directory -Path $destinationDir -Force | Out-Null
             }
 
-            $content = [System.IO.File]::ReadAllText($file.FullName)
-            $content = $content.Replace($templateToken, $PhantomRenderVersion)
-            [System.IO.File]::WriteAllText($destinationPath, $content, $utf8NoBom)
+            $extension = [System.IO.Path]::GetExtension($file.Name)
+            if ($textExtensions -contains $extension.ToLowerInvariant()) {
+                $content = [System.IO.File]::ReadAllText($file.FullName)
+                $content = $content.Replace($templateToken, $PhantomRenderVersion)
+                [System.IO.File]::WriteAllText($destinationPath, $content, $utf8NoBom)
+            }
+            else {
+                [System.IO.File]::Copy($file.FullName, $destinationPath, $true)
+            }
         }
 
         $zipPath = Join-Path $OutputDir $spec.ZipName
