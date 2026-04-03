@@ -29,6 +29,21 @@
     <PackageReference Include="PhantomRender.ImGui" Version="__PHANTOMRENDER_NUGET_VERSION__" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="README.md">
+      <Visible>false</Visible>
+    </None>
+    <None Update="publish-netfx-x64.bat">
+      <Visible>false</Visible>
+    </None>
+    <None Update="publish-netfx-x86.bat">
+      <Visible>false</Visible>
+    </None>
+    <None Update="$safeprojectname$.json">
+      <Visible>false</Visible>
+    </None>
+  </ItemGroup>
+
   <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
     <Compile Remove="dllmain.cs" />
     <Compile Remove="HostPathResolver.cs" />

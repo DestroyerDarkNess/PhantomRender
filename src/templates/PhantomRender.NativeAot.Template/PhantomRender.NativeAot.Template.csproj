@@ -25,6 +25,21 @@
     <PackageReference Include="PhantomRender.ImGui" Version="__PHANTOMRENDER_NUGET_VERSION__" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="README.md">
+      <Visible>false</Visible>
+    </None>
+    <None Update="publish-x64.bat">
+      <Visible>false</Visible>
+    </None>
+    <None Update="publish-x86.bat">
+      <Visible>false</Visible>
+    </None>
+    <RdXmlFile Update="rd.xml">
+      <Visible>false</Visible>
+    </RdXmlFile>
+  </ItemGroup>
+
   <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
     <Compile Remove="Exports.cs" />
     <None Include="Exports.cs" />
