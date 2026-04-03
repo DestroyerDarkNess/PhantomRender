@@ -4,7 +4,7 @@ using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core.Renderers;
 using PhantomRender.Overlays;
 
-namespace $rootnamespace$
+namespace $safeprojectname$
 {
     public static class Program
     {

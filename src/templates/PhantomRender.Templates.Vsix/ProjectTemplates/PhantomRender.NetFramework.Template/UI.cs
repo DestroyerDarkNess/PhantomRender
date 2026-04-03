@@ -9,7 +9,7 @@ using PhantomRender.ImGui.Core.Renderers;
 using PhantomRender.Overlays;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
-namespace $rootnamespace$
+namespace $safeprojectname$
 {
     internal sealed class UI : IDisposable
     {

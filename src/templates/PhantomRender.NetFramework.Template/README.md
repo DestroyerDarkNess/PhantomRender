@@ -36,7 +36,7 @@ The template includes a ready-to-use Hydra preset:
 It is already configured to target:
 
 - assembly: `$safeprojectname$.dll`
-- entry point type: `$rootnamespace$.dllmain`
+- entry point type: `$safeprojectname$.dllmain`
 - entry point method: `EntryPoint`
 
 ## Build The External Sample EXE

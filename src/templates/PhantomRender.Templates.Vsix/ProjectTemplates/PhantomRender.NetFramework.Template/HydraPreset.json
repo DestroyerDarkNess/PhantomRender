@@ -132,7 +132,7 @@
     "hasCustomEntryPoint": true,
     "entryPointToken": 100663299,
     "entryPointMethodName": "EntryPoint",
-    "entryPointTypeName": "$rootnamespace$.dllmain",
+    "entryPointTypeName": "$safeprojectname$.dllmain",
     "assemblyName": "$safeprojectname$.dll",
     "assemblyFullName": "$safeprojectname$.dll"
   }

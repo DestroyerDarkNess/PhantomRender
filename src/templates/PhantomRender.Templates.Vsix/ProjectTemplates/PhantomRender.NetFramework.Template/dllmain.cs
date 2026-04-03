@@ -6,7 +6,7 @@ using PhantomRender.Core;
 using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core.Renderers;
 
-namespace $rootnamespace$
+namespace $safeprojectname$
 {
     public class dllmain
     {
