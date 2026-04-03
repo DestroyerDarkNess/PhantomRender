@@ -5,7 +5,7 @@
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <LangVersion>latest</LangVersion>
     <Platforms>x64;x86</Platforms>
-    <PhantomRenderNetFrameworkOutputType Condition="'$(PhantomRenderNetFrameworkOutputType)' == ''">Library</PhantomRenderNetFrameworkOutputType>
+    <PhantomRenderNetFrameworkOutputType Condition="'$(PhantomRenderNetFrameworkOutputType)' == ''">Exe</PhantomRenderNetFrameworkOutputType>
     <OutputType Condition="'$(OutputType)' == ''">$(PhantomRenderNetFrameworkOutputType)</OutputType>
     <StartupObject Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">$safeprojectname$.Program</StartupObject>
     <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
@@ -47,13 +47,19 @@
   <ItemGroup Condition="'$(OutputType)' == 'Exe' or '$(OutputType)' == 'WinExe'">
     <Compile Remove="dllmain.cs" />
     <Compile Remove="HostPathResolver.cs" />
-    <None Include="dllmain.cs" />
-    <None Include="HostPathResolver.cs" />
+    <None Include="dllmain.cs">
+      <Visible>false</Visible>
+    </None>
+    <None Include="HostPathResolver.cs">
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 
   <ItemGroup Condition="'$(OutputType)' != 'Exe' and '$(OutputType)' != 'WinExe'">
     <Compile Remove="Program.cs" />
-    <None Include="Program.cs" />
+    <None Include="Program.cs">
+      <Visible>false</Visible>
+    </None>
   </ItemGroup>
 
   <Target Name="CopyImGuiRuntimeDepsToPrimaryOutput" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">

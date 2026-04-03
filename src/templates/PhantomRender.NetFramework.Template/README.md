@@ -5,9 +5,9 @@ This project is a .NET Framework 4.8 PhantomRender sample host.
 ## Modes
 
 - `Library`
-  Builds the injectable managed host. This is the default.
+  Builds the injectable managed host.
 - `Exe`
-  Builds the external DX9 sample host for quick local UI testing.
+  Builds the external DX9 sample host for quick local UI testing. This is the default.
 
 ## Build The Injectable DLL
 

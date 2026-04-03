@@ -5,9 +5,9 @@ This project is a NativeAOT PhantomRender sample host.
 ## Modes
 
 - `Library`
-  Builds an injectable internal overlay DLL. This is the default.
+  Builds an injectable internal overlay DLL.
 - `Exe`
-  Builds the external DX9 sample host for quick local UI testing.
+  Builds the external DX9 sample host for quick local UI testing. This is the default.
 
 ## Build The Injectable DLL
 
