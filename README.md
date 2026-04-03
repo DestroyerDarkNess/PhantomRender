@@ -14,6 +14,9 @@
   Includes two host variants: a modern NativeAOT host on .NET 9 and a managed host on .NET Framework 4.8.
 </p>
 <p align="center">
+  <a href="https://github.com/DestroyerDarkNess/PhantomRender/releases/download/0.1.0-preview.1--Vsix-0.1.12/PhantomRender.Templates.Vsix.vsix">Download Visual Studio Templates (.vsix)</a>
+</p>
+<p align="center">
   <a href="./Games.md">Games Tested Gallery</a> ·
   <a href="./KNOWN_ISSUES.md">Known Issues</a>
 </p>
@@ -21,7 +24,6 @@
 ## Table of Contents
 
 - [Project Structure](#project-structure)
-- [Runtime Hosts](#runtime-hosts)
 - [Graphics Support](#graphics-support)
 - [Build And Publish](#build-and-publish)
 - [Debug And Test](#debug-and-test)
@@ -39,13 +41,6 @@
 | `src/PhantomRender.ImGui` | Overlay host and ImGui renderer layer for DX9/DX10/DX11/DX12/OpenGL/Vulkan. |
 | `src/PhantomRender.ImGui.Native` | NativeAOT injected host, dependency loader, logging, and default sample UI. |
 | `src/PhantomRender.ImGui.NetFramework` | Managed .NET Framework 4.8 host with classic `Program.Main(...)` debug entrypoint and `dllmain.EntryPoint()` injection entrypoint. |
-
-## Runtime Hosts
-
-| Host | Runtime | Primary use |
-|---|---|---|
-| `PhantomRender.ImGui.Native` | .NET 9 NativeAOT | Default modern injected DLL host. |
-| `PhantomRender.ImGui.NetFramework` | .NET Framework 4.8 | Managed host for classic CLR-based injection workflows. |
 
 ## Graphics Support
 
