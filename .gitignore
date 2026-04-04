@@ -34,7 +34,7 @@ stepnuget.md
 .vs
 *.userprefs
 .tmproj
-
+.dotnet
 # Build output
 bin/
 publish/
