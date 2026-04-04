@@ -14,7 +14,7 @@
   Includes two host variants: a modern NativeAOT host on .NET 9 and a managed host on .NET Framework 4.8.
 </p>
 <p align="center">
-  <a href="https://github.com/DestroyerDarkNess/PhantomRender/releases/download/0.1.0-preview.1--Vsix-0.1.12/PhantomRender.Templates.Vsix.vsix">Download Visual Studio Templates (.vsix)</a>
+  <a href="https://github.com/DestroyerDarkNess/PhantomRender/releases/download/0.1.0-preview.2--Vsix-0.1.13/PhantomRender.Templates.Vsix.vsix">Download Visual Studio Templates (.vsix)</a>
 </p>
 <p align="center">
   <a href="./Games.md">Games Tested Gallery</a> ·
