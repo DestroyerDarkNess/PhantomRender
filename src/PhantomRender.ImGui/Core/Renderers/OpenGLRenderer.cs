@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Hexa.NET.ImGui.Backends.OpenGL3;
 using PhantomRender.Core;
+using PhantomRender.Core.Hooks.Graphics.OpenGL;
 using PhantomRender.ImGui.Core;
 using HexaImGui = Hexa.NET.ImGui.ImGui;
 
@@ -22,6 +23,8 @@ namespace PhantomRender.ImGui.Core.Renderers
             _backendNewFrameAction = BackendNewFrame;
             _backendRenderAction = BackendRender;
         }
+
+        public OpenGLSwapBuffersHookTarget SwapBuffersHookTarget { get; set; } = OpenGLSwapBuffersHookTarget.Auto;
 
         public override bool Initialize(nint device, nint windowHandle)
         {

@@ -193,12 +193,12 @@ namespace PhantomRender.ImGui
 
         private bool StartOpenGL()
         {
-            if (!(Renderer is OpenGLRenderer))
+            if (!(Renderer is OpenGLRenderer renderer))
             {
                 throw new InvalidOperationException("OpenGL internal overlay requires an OpenGLRenderer.");
             }
 
-            _openGLHook = new OpenGLHook();
+            _openGLHook = new OpenGLHook(renderer.SwapBuffersHookTarget);
             _openGLDeviceContext = IntPtr.Zero;
             _openGLRenderingContext = IntPtr.Zero;
             _openGLWindowHandle = IntPtr.Zero;
@@ -371,8 +371,23 @@ namespace PhantomRender.ImGui
             }
 
             IntPtr renderingContext = wglGetCurrentContext();
+            IntPtr currentDeviceContext = wglGetCurrentDC();
+            if (renderingContext == IntPtr.Zero || currentDeviceContext == IntPtr.Zero)
+            {
+                return;
+            }
 
-            IntPtr windowHandle = WindowFromDC(hdc);
+            IntPtr targetDeviceContext = hdc != IntPtr.Zero ? hdc : currentDeviceContext;
+            if (targetDeviceContext == IntPtr.Zero)
+            {
+                targetDeviceContext = currentDeviceContext;
+            }
+
+            IntPtr windowHandle = WindowFromDC(targetDeviceContext);
+            if (windowHandle == IntPtr.Zero && currentDeviceContext != targetDeviceContext)
+            {
+                windowHandle = WindowFromDC(currentDeviceContext);
+            }
             if (windowHandle == IntPtr.Zero)
             {
                 windowHandle = ResolveWindowHandle();
@@ -383,23 +398,21 @@ namespace PhantomRender.ImGui
                 return;
             }
 
-            if (!TryAcceptOpenGLTarget(hdc, windowHandle, renderingContext))
+            if (!TryAcceptOpenGLTarget(currentDeviceContext, windowHandle, renderingContext))
             {
                 return;
             }
 
+            targetDeviceContext = _openGLDeviceContext != IntPtr.Zero ? _openGLDeviceContext : currentDeviceContext;
             if (_openGLWindowHandle != IntPtr.Zero)
             {
                 windowHandle = _openGLWindowHandle;
             }
 
-            if (!Renderer.IsInitialized && !Initialize(hdc, windowHandle))
+            if (!TryRenderOpenGLFrame(targetDeviceContext, renderingContext, windowHandle))
             {
                 return;
             }
-
-            BeginFrame();
-            RenderFrame();
         }
 
         private unsafe void HandleVulkanPresent(ref VulkanPresentHookArgs hookArgs)
@@ -855,6 +868,67 @@ namespace PhantomRender.ImGui
             _openGLLoggedThreadMismatch = false;
         }
 
+        private bool TryRenderOpenGLFrame(IntPtr deviceContext, IntPtr renderingContext, IntPtr windowHandle)
+        {
+            if (!TryEnterOpenGLContext(deviceContext, renderingContext, out IntPtr previousDeviceContext, out IntPtr previousRenderingContext, out bool switchedContext))
+            {
+                return false;
+            }
+
+            try
+            {
+                if (!Renderer.IsInitialized && !Initialize(deviceContext, windowHandle))
+                {
+                    return false;
+                }
+
+                BeginFrame();
+                RenderFrame();
+                return true;
+            }
+            finally
+            {
+                RestoreOpenGLContext(previousDeviceContext, previousRenderingContext, switchedContext);
+            }
+        }
+
+        private static bool TryEnterOpenGLContext(
+            IntPtr deviceContext,
+            IntPtr renderingContext,
+            out IntPtr previousDeviceContext,
+            out IntPtr previousRenderingContext,
+            out bool switchedContext)
+        {
+            previousRenderingContext = wglGetCurrentContext();
+            previousDeviceContext = wglGetCurrentDC();
+            switchedContext =
+                previousDeviceContext != deviceContext ||
+                previousRenderingContext != renderingContext;
+
+            if (!switchedContext)
+            {
+                return true;
+            }
+
+            return wglMakeCurrent(deviceContext, renderingContext);
+        }
+
+        private static void RestoreOpenGLContext(IntPtr previousDeviceContext, IntPtr previousRenderingContext, bool switchedContext)
+        {
+            if (!switchedContext)
+            {
+                return;
+            }
+
+            if (previousDeviceContext != IntPtr.Zero && previousRenderingContext != IntPtr.Zero)
+            {
+                wglMakeCurrent(previousDeviceContext, previousRenderingContext);
+                return;
+            }
+
+            wglMakeCurrent(IntPtr.Zero, IntPtr.Zero);
+        }
+
         private IntPtr ResolveDxgiWindowHandle(IntPtr outputWindow)
         {
             if (outputWindow == IntPtr.Zero)
@@ -1200,6 +1274,13 @@ namespace PhantomRender.ImGui
 
         [DllImport("opengl32.dll")]
         private static extern IntPtr wglGetCurrentContext();
+
+        [DllImport("opengl32.dll")]
+        private static extern IntPtr wglGetCurrentDC();
+
+        [DllImport("opengl32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool wglMakeCurrent(IntPtr hdc, IntPtr hglrc);
 
         private const uint GA_ROOT = 2;
     }
