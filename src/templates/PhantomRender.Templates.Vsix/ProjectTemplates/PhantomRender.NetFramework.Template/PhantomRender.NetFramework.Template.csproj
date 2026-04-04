@@ -25,8 +25,8 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="PhantomRender" Version="0.1.0-preview.1" />
-    <PackageReference Include="PhantomRender.ImGui" Version="0.1.0-preview.1" />
+    <PackageReference Include="PhantomRender" Version="0.1.0-preview.2" />
+    <PackageReference Include="PhantomRender.ImGui" Version="0.1.0-preview.2" />
   </ItemGroup>
 
   <ItemGroup>

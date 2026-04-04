@@ -1,5 +1,6 @@
 param(
-    [string]$PhantomRenderVersion = "0.1.0-preview.1",
+    [string]$PhantomRenderVersion = "0.1.0-preview.2",
+    [string]$PhantomRenderImGuiVersion = "",
     [string]$OutputDir = ""
 )
 
@@ -9,7 +10,14 @@ if ([string]::IsNullOrWhiteSpace($OutputDir)) {
     $OutputDir = Join-Path $PSScriptRoot "PhantomRender.Templates.Vsix\ProjectTemplates"
 }
 
-$templateToken = "__PHANTOMRENDER_NUGET_VERSION__"
+if ([string]::IsNullOrWhiteSpace($PhantomRenderImGuiVersion)) {
+    $PhantomRenderImGuiVersion = $PhantomRenderVersion
+}
+
+$templateTokenMap = @{
+    "__PHANTOMRENDER_NUGET_VERSION__" = $PhantomRenderVersion
+    "__PHANTOMRENDER_IMGUI_NUGET_VERSION__" = $PhantomRenderImGuiVersion
+}
 $templateSpecs = @(
     @{
         Source = Join-Path $PSScriptRoot "PhantomRender.NativeAot.Template"
@@ -73,7 +81,9 @@ foreach ($spec in $templateSpecs) {
         $extension = [System.IO.Path]::GetExtension($file.Name)
         if ($textExtensions -contains $extension.ToLowerInvariant()) {
             $content = [System.IO.File]::ReadAllText($file.FullName)
-            $content = $content.Replace($templateToken, $PhantomRenderVersion)
+            foreach ($token in $templateTokenMap.Keys) {
+                $content = $content.Replace($token, $templateTokenMap[$token])
+            }
             [System.IO.File]::WriteAllText($destinationPath, $content, $utf8NoBom)
         }
         else {

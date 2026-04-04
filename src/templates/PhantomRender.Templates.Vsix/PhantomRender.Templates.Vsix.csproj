@@ -29,7 +29,8 @@
     <StartProgram Condition="'$(DevEnvDir)' != ''">$(DevEnvDir)devenv.exe</StartProgram>
     <StartArguments>/rootsuffix Exp</StartArguments>
     <DeployExtension>false</DeployExtension>
-    <PhantomRenderTemplatePackageVersion>0.1.0-preview.1</PhantomRenderTemplatePackageVersion>
+    <PhantomRenderTemplatePackageVersion>0.1.0-preview.2</PhantomRenderTemplatePackageVersion>
+    <PhantomRenderImGuiTemplatePackageVersion Condition="'$(PhantomRenderImGuiTemplatePackageVersion)' == ''">$(PhantomRenderTemplatePackageVersion)</PhantomRenderImGuiTemplatePackageVersion>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(Configuration)|$(Platform)' == 'Debug|AnyCPU'">
@@ -81,7 +82,7 @@
 
   <Target Name="PrepareVsixProjectTemplates">
     <Message Importance="High" Text="Preparing PhantomRender VSIX project templates into $(MSBuildProjectDirectory)\ProjectTemplates" />
-    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\prepare-vsix-templates.ps1&quot; -PhantomRenderVersion &quot;$(PhantomRenderTemplatePackageVersion)&quot; -OutputDir &quot;$(MSBuildProjectDirectory)\ProjectTemplates&quot;" />
+    <Exec Command="powershell -NoProfile -ExecutionPolicy Bypass -File &quot;$(MSBuildProjectDirectory)\..\prepare-vsix-templates.ps1&quot; -PhantomRenderVersion &quot;$(PhantomRenderTemplatePackageVersion)&quot; -PhantomRenderImGuiVersion &quot;$(PhantomRenderImGuiTemplatePackageVersion)&quot; -OutputDir &quot;$(MSBuildProjectDirectory)\ProjectTemplates&quot;" />
     <ItemGroup>
       <Content Include="ProjectTemplates\**\*">
         <IncludeInVSIX>true</IncludeInVSIX>

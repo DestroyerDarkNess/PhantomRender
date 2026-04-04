@@ -3,6 +3,7 @@ using System.Diagnostics;
 using System.IO;
 using System.Threading;
 using PhantomRender.Core;
+using PhantomRender.Core.Hooks.Graphics.OpenGL;
 using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core.Renderers;
 
@@ -171,9 +172,16 @@ namespace $safeprojectname$
                 case GraphicsApi.DirectX10:
                     return new DirectX10Renderer();
                 case GraphicsApi.DirectX9:
-                    return new DirectX9Renderer();
+                    return new DirectX9Renderer
+                    {
+                        // InitializationEndpoint = DirectX9InitializationEndpoint.EndScene,
+                    };
                 case GraphicsApi.OpenGL:
-                    return new OpenGLRenderer();
+                    return new OpenGLRenderer
+                    {
+                        // SwapBuffersHookTarget = OpenGLSwapBuffersHookTarget.GdiSwapBuffers,
+                        // SwapBuffersHookTarget = OpenGLSwapBuffersHookTarget.WglSwapBuffers,
+                    };
                 case GraphicsApi.Vulkan:
                     return new VulkanRenderer();
                 default:
