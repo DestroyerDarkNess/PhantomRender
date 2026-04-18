@@ -4,6 +4,8 @@ using PhantomRender.Core;
 using PhantomRender.Overlays;
 using PhantomRender.ImGui;
 using PhantomRender.ImGui.Core.Renderers;
+using System.Drawing;
+using System.Windows.Forms;
 
 namespace PhantomRender.ImGui.NetFramework
 {
@@ -23,15 +25,21 @@ namespace PhantomRender.ImGui.NetFramework
             {
                 Title = "PhantomRender",
                 Mode = mode,
-                TopMost = mode == ExternalOverlayMode.Overlay,
+                TopMost = mode == ExternalOverlayMode.Window,
                 ClickThrough = false,
+                BackgroundColor = OverlayColor.Black,
+                TransparentColor = OverlayColor.Black,
             })
+
             using (var overlay = new ExternalOverlay(new DirectX9Renderer()))
             {
-                if (mode == ExternalOverlayMode.Overlay)
-                {
-                    host.TransparentColor = OverlayColor.Black;
-                }
+                Rectangle screenBounds = Screen.PrimaryScreen.Bounds;
+                host.Window.X = 0;
+                host.Window.Y = 0;
+                host.Window.Width = screenBounds.Width;
+                host.Window.Height = screenBounds.Height;
+                host.Window.ShowMaximizeBox = true;
+                host.Window.Borderless = true;
 
                 string assemblyDirectory = HostPathResolver.ResolveInjectedHostDirectory("PhantomRender.ImGui.NetFramework.dll");
                 if (!overlay.Dependencies.LoadDependencies(assemblyDirectory))

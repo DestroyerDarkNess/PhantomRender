@@ -28,6 +28,10 @@
     <ProjectReference Include="..\PhantomRender.ImGui\PhantomRender.ImGui.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Reference Include="System.Windows.Forms" />
+  </ItemGroup>
+
   <Target Name="CopyImGuiRuntimeDepsToPrimaryOutput" AfterTargets="Build" Condition="'$(DesignTimeBuild)' != 'true' and '$(IsCrossTargetingBuild)' != 'true'">
     <ItemGroup>
       <_PrimaryOutputNativeDeps Include="$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll" Condition="Exists('$(TargetDir)runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll')" />
