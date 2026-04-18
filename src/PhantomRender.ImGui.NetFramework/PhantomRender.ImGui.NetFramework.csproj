@@ -21,6 +21,7 @@
     <_NuGetPackageRoot Condition="'$(_NuGetPackageRoot)' == ''">$([System.Environment]::GetFolderPath(SpecialFolder.UserProfile))\.nuget\packages\</_NuGetPackageRoot>
     <_HexaImGuiNativePackagePath>$(_NuGetPackageRoot)hexa.net.imgui\2.2.9\runtimes\$(_NativeRuntimeIdentifier)\native\cimgui.dll</_HexaImGuiNativePackagePath>
     <_HexaImGuiBackendsNativePackagePath>$(_NuGetPackageRoot)hexa.net.imgui.backends\1.0.18\runtimes\$(_NativeRuntimeIdentifier)\native\ImGuiImpl.dll</_HexaImGuiBackendsNativePackagePath>
+    <OutputType>Exe</OutputType>
   </PropertyGroup>
 
   <ItemGroup>
