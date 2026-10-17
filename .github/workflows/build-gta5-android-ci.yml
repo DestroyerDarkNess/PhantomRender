@@ -1,0 +1,65 @@
+name: Build GTA5 Android Diagnostic
+
+on:
+  push:
+    branches:
+      - main
+      - chatgpt-gta5-android-ci-20261017
+    paths:
+      - '.github/workflows/build-gta5-android-ci.yml'
+      - 'ci-mini/**'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android packages
+        run: |
+          yes | sdkmanager --licenses >/dev/null || true
+          sdkmanager "platforms;android-35" "build-tools;35.0.0" "ndk;28.2.13676358" "cmake;3.22.1"
+
+      - name: Set up Gradle 8.9
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Reconstruct exact source archive
+        run: |
+          cat ci-mini/part-*.txt | base64 -d > gta5-ci-mini.zip
+          echo "076d6ef55e31b778eb526263162c1e1ba70866282b82cb1614bd446b264be7b2  gta5-ci-mini.zip" | sha256sum -c -
+          unzip -q gta5-ci-mini.zip
+
+      - name: Build debug APK
+        working-directory: gta5-ci-mini
+        run: gradle --no-daemon :app:assembleDebug
+
+      - name: Collect build
+        run: |
+          cp gta5-ci-mini/app/build/outputs/apk/debug/app-debug.apk GTA5-Android-v0.5-diagnostic-arm64.apk
+          sha256sum GTA5-Android-v0.5-diagnostic-arm64.apk | tee APK-SHA256.txt
+          ls -lh GTA5-Android-v0.5-diagnostic-arm64.apk
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: GTA5-Android-v0.5-diagnostic-arm64
+          path: |
+            GTA5-Android-v0.5-diagnostic-arm64.apk
+            APK-SHA256.txt
+          retention-days: 1
